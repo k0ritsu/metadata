@@ -1,8 +1,10 @@
+import { v7 } from 'uuid';
 import type { Config } from './config/config.js';
 import { loadModules } from './loader/loader.js';
 import { createJsonHandler, createLogger } from './logger/logger.js';
 import { createRouter } from './router/router.js';
 import { createServer } from './server.js';
+import { createStore } from './store/store.js';
 
 export async function bootstrap(config: Config) {
   const logger = createLogger(
@@ -11,10 +13,27 @@ export async function bootstrap(config: Config) {
     })
   );
 
+  const store = createStore();
+
   const router = createRouter();
-  const server = await createServer(router, {
-    port: config.HTTP_PORT
-  });
+  const server = await createServer(
+    (req, res, ctx, done) => {
+      let requestId = req.headers['x-request-id'];
+      if (typeof requestId !== 'string') {
+        requestId = v7();
+      }
+
+      return store.run(
+        {
+          requestId
+        },
+        () => router.lookup(req, res, ctx, done)
+      );
+    },
+    {
+      port: config.HTTP_PORT
+    }
+  );
 
   logger.info(
     `Starting ${config.APP_NAME}@${config.APP_VERSION} on port ${config.HTTP_PORT}`
@@ -22,13 +41,14 @@ export async function bootstrap(config: Config) {
 
   const modules = await loadModules();
   const hooks = await Promise.all(
-    modules.map(async (module) => {
+    modules.map((module) => {
       logger.info(`Registering module ${module.name}@${module.version}`);
 
       return module.main.register({
         router,
         logger,
-        modules
+        modules,
+        store
       });
     })
   );

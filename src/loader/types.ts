@@ -1,5 +1,6 @@
 import type { Logger } from '../logger/types.js';
 import type { Router } from '../router/types.js';
+import type { Store } from '../store/types.js';
 
 export interface Ctx {
   router: Router;
@@ -9,6 +10,7 @@ export interface Ctx {
       main: ModMain;
     }
   >;
+  store: Store;
 }
 
 export interface Mod {

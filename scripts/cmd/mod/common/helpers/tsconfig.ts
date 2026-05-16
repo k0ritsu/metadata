@@ -22,7 +22,8 @@ const ROOT_TSCONFIG = resolve(TSCONFIG);
 const CORE_ALIASES = {
   '#core/loader': resolve('src', 'loader', 'types.ts'),
   '#core/logger': resolve('src', 'logger', 'types.ts'),
-  '#core/router': resolve('src', 'router', 'types.ts')
+  '#core/router': resolve('src', 'router', 'types.ts'),
+  '#core/store': resolve('src', 'store', 'types.ts')
 };
 
 export async function createTsconfigs(toUpdate?: ModRoot[]) {
@@ -144,12 +145,11 @@ function createBuildTsconfig(modules: ModDeps[]) {
     references: [
       {
         path: toTsconfigPath(root, ROOT_TSCONFIG)
-      }
-    ].concat(
-      modules.map((mod) => ({
+      },
+      ...modules.map((mod) => ({
         path: toTsconfigProjectPath(root, mod.root)
       }))
-    )
+    ]
   };
 }
 
