@@ -11,7 +11,7 @@ interface Config {
 }
 
 interface Handler {
-  (lvl: Level, msg: string, ...args: unknown[]): void;
+  (level: Level, msg: string, ...args: unknown[]): void;
 }
 
 export function createLogger(handler: Handler) {
@@ -32,8 +32,8 @@ export function createLogger(handler: Handler) {
 }
 
 export function createJsonHandler(config: Config): Handler {
-  return (lvl, msg, ...args) => {
-    if (Level[lvl] < Level[config.level]) {
+  return (level, msg, ...args) => {
+    if (Level[level] < Level[config.level]) {
       return;
     }
 
@@ -43,16 +43,16 @@ export function createJsonHandler(config: Config): Handler {
       const key = args[i];
       const val = args[i + 1];
 
-      if (typeof key === 'string') {
+      if (typeof key === 'string' && !['time', 'level', 'msg'].includes(key)) {
         attrs[key] = val;
       }
     }
 
     const log = JSON.stringify({
-      ...attrs,
-      lvl,
       time: new Date().toISOString(),
-      msg
+      level,
+      msg,
+      ...attrs
     });
 
     process.stdout.write(`${log}\n`);
@@ -60,8 +60,8 @@ export function createJsonHandler(config: Config): Handler {
 }
 
 export function createTextHandler(config: Config): Handler {
-  return (lvl, msg, ...args) => {
-    if (Level[lvl] < Level[config.level]) {
+  return (level, msg, ...args) => {
+    if (Level[level] < Level[config.level]) {
       return;
     }
 
@@ -71,17 +71,19 @@ export function createTextHandler(config: Config): Handler {
       const key = args[i];
       const val = args[i + 1];
 
-      if (typeof key === 'string') {
+      if (typeof key === 'string' && !['time', 'level', 'msg'].includes(key)) {
         attrs.push(`${key}=${JSON.stringify(val)}`);
       }
     }
 
     const log = [
       new Date().toISOString(),
-      `[${lvl}]`,
+      `[${level}]`,
       msg,
-      attrs.length > 0 ? ' ' + attrs.join(' ') : ''
-    ].join('\t');
+      attrs.length > 0 ? '\t' + attrs.join('\t') : undefined
+    ]
+      .filter(Boolean)
+      .join('\t');
 
     process.stdout.write(`${log}\n`);
   };
