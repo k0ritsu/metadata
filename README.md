@@ -95,6 +95,10 @@ Modules live under `src/modules`. Each top-level module is discovered from a
 }
 ```
 
+Modules can be library-only or runnable. Library modules only provide code for
+other modules to import. Runnable modules opt in to startup loading with
+`enabled: true` and a `main` entry.
+
 Fields:
 
 - `name`: unique module name.
@@ -135,37 +139,37 @@ The module CLI is implemented in `scripts/mod.ts`.
 Initialize module configuration and regenerate module TypeScript references:
 
 ```bash
-npx mod init --registry http://localhost:8080
+node scripts/mod.ts init --repository http://localhost:1337
 ```
 
-If `src/modules/modrc.json` already exists, `--registry` is not required:
+If `src/modules/modrc.json` already exists, `--repository` is not required:
 
 ```bash
-npx mod init
+node scripts/mod.ts init
 ```
 
 Build module metadata into `dist/modules`:
 
 ```bash
-npx mod build
+node scripts/mod.ts build
 ```
 
 Current command status:
 
-| Command   | Status          |
-| --------- | --------------- |
-| `build`   | Implemented     |
-| `create`  | Not implemented |
-| `init`    | Implemented     |
-| `install` | Not implemented |
-| `publish` | Not implemented |
-| `remove`  | Not implemented |
+| Command   | Status      |
+| --------- | ----------- |
+| `build`   | Implemented |
+| `create`  | Implemented |
+| `init`    | Implemented |
+| `install` | Implemented |
+| `publish` | Implemented |
+| `remove`  | Implemented |
 
 ## Generated Files
 
 The `init` command maintains module build metadata:
 
-- `src/modules/modrc.json`: module registry configuration.
+- `src/modules/modrc.json`: module repository configuration.
 - `src/modules/modlock.json`: generated module dependency lock file.
 - `src/modules/**/tsconfig.json`: generated per-module TypeScript projects.
 - `tsconfig.build.json`: generated build references for the root project and
@@ -174,7 +178,7 @@ The `init` command maintains module build metadata:
 Regenerate these files after adding, removing, or changing module dependencies:
 
 ```bash
-npx mod init
+node scripts/mod.ts init
 ```
 
 ## Tests

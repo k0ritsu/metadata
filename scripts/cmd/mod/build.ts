@@ -1,18 +1,17 @@
-import { glob, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { glob, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
-import { MODULE } from './common/constants.ts';
-import type { Mod } from './common/types.ts';
+import { MODULE, MODULES } from './common/constants.ts';
+import { readModuleManifestFile } from './common/helpers/manifest.ts';
 
-export async function build(args: string[]) {
-  for await (const path of glob(resolve('src', 'modules', '**', MODULE))) {
-    const mod: Mod = JSON.parse(
-      await readFile(path, {
-        encoding: 'utf8'
-      })
-    );
+export async function build(_args: string[]) {
+  for await (const path of glob(resolve(MODULES, '**', MODULE))) {
+    const mod = await readModuleManifestFile(path, {
+      validateDependencyRanges: true
+    });
 
-    if (typeof mod.main === 'string') {
-      mod.main = mod.main.replace(/\.ts$/, '.js');
+    if (mod.main?.endsWith('.ts')) {
+      const main = mod.main.slice(0, -3);
+      mod.main = `${main}.js`;
     }
 
     const dist = resolve('dist', relative(resolve('src'), path));
