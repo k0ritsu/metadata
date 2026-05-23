@@ -1,12 +1,1 @@
-{
-  "ping": {
-    "dependencies": {},
-    "name": "ping",
-    "version": "1.0.0"
-  },
-  "metadata": {
-    "dependencies": {},
-    "name": "metadata",
-    "version": "0.1.0"
-  }
-}
+{}
