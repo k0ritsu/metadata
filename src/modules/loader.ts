@@ -17,7 +17,7 @@ export const resolve: ResolveHook = async (specifier, context, nextResolve) => {
   }
 
   if (isInsidePath(context, MODULES)) {
-    specifier = await resolveModulesAlias(specifier, context);
+    specifier = await resolveSpecifier(specifier, context);
   }
 
   return nextResolve(withRuntimeExtension(specifier), context);
@@ -27,7 +27,21 @@ export const load: LoadHook = (url, context, nextLoad) => {
   return nextLoad(url, context);
 };
 
-async function resolveModulesAlias(
+function isInsidePath(context: ResolveHookContext, path: string) {
+  if (!context.parentURL) {
+    return false;
+  }
+
+  const relativePath = relative(path, fileURLToPath(context.parentURL));
+
+  return (
+    relativePath !== '' &&
+    !relativePath.startsWith('..') &&
+    !isAbsolute(relativePath)
+  );
+}
+
+async function resolveSpecifier(
   specifier: string,
   context: ResolveHookContext
 ) {
@@ -37,14 +51,14 @@ async function resolveModulesAlias(
     return specifier;
   }
 
-  const [dependency, ...rest] = specifier.split('/');
+  const [dependency, ...paths] = specifier.split('/');
   if (!dependency) {
     throw new Error(`invalid module alias "${MODULES_ALIAS}${specifier}"`);
   }
 
-  const candidates = createDependencyCandidates(dependency, rest, context);
+  const candidates = createDependencyCandidates(dependency, context);
   for (const candidate of candidates) {
-    const resolved = withRuntimeExtension(candidate);
+    const resolved = withRuntimeExtension(join(candidate, ...paths));
     try {
       await access(resolved);
 
@@ -59,7 +73,6 @@ async function resolveModulesAlias(
 
 function createDependencyCandidates(
   dependency: string,
-  rest: string[],
   context: ResolveHookContext
 ) {
   const levels = getModuleLevels(context);
@@ -79,17 +92,17 @@ function createDependencyCandidates(
       ...nested.flatMap((module) => ['modules', module])
     );
 
-    candidates.push(join(modulePath, 'modules', dependency, ...rest));
+    candidates.push(join(modulePath, 'modules', dependency));
   }
 
-  candidates.push(join(MODULES, dependency, ...rest));
+  candidates.push(join(MODULES, dependency));
 
   return candidates;
 }
 
 function getModuleLevels(context: ResolveHookContext) {
   const { parentURL } = context;
-  if (!parentURL || !isInsidePath(context, MODULES)) {
+  if (!parentURL) {
     return [];
   }
 
@@ -97,7 +110,7 @@ function getModuleLevels(context: ResolveHookContext) {
   const relativePath = relative(MODULES, parentPath);
 
   if (
-    !relativePath ||
+    relativePath === '' ||
     relativePath.startsWith('..') ||
     isAbsolute(relativePath)
   ) {
@@ -126,14 +139,6 @@ function getModuleLevels(context: ResolveHookContext) {
   }
 
   return levels;
-}
-
-function isInsidePath(context: ResolveHookContext, path: string) {
-  if (!context.parentURL) {
-    return false;
-  }
-
-  return fileURLToPath(context.parentURL).includes(path);
 }
 
 function withRuntimeExtension(specifier: string): string {
