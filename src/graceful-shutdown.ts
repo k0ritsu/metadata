@@ -1,5 +1,5 @@
 import process from 'node:process';
-import { GRACEFUL_SHUTDOWN_TIMEOUT } from './constants.js';
+import { DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT } from './constants.js';
 
 class GracefulShutdownTimeout extends Error {
   constructor(timeout: number) {
@@ -7,14 +7,29 @@ class GracefulShutdownTimeout extends Error {
   }
 }
 
-export function gracefulShutdown(shutdown: () => Promise<void>) {
+interface Shutdown {
+  (): Promise<void>;
+}
+
+interface Config {
+  timeout: number;
+}
+
+export function gracefulShutdown(
+  shutdown: Shutdown,
+  config: Config = {
+    timeout: DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT
+  }
+) {
+  const { timeout } = config;
+
   async function listener(signal: NodeJS.Signals) {
     await Promise.race([
       shutdown(),
       new Promise<void>((_, reject) => {
         setTimeout(() => {
-          reject(new GracefulShutdownTimeout(GRACEFUL_SHUTDOWN_TIMEOUT));
-        }, GRACEFUL_SHUTDOWN_TIMEOUT);
+          reject(new GracefulShutdownTimeout(timeout));
+        }, timeout);
       })
     ]);
 
