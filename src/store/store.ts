@@ -7,17 +7,19 @@ export function createStore() {
     run: als.run.bind(als),
     set: <T = unknown>(key: string, value: T) => {
       const store = als.getStore();
-      if (store) {
-        store[key] = value;
+      if (!store) {
+        return;
       }
+
+      store[key] = value;
     },
     get: <T = unknown>(key: string) => {
       const store = als.getStore();
-      if (store) {
-        return store[key] as T;
+      if (!store) {
+        return;
       }
 
-      return undefined;
+      return store[key] as T;
     }
   };
 }
