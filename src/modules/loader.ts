@@ -4,6 +4,8 @@ import { extname, isAbsolute, join, relative, sep } from 'node:path';
 import { cwd } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+const JAVASCRIPT_EXTENSION = '.js';
+
 const EXTENSION = extname(import.meta.filename);
 
 const NODE_MODULES = join(cwd(), 'node_modules');
@@ -142,5 +144,11 @@ function getModuleLevels(context: ResolveHookContext) {
 }
 
 function withRuntimeExtension(specifier: string): string {
-  return specifier.replace(/\.js$/, EXTENSION);
+  if (specifier.endsWith(JAVASCRIPT_EXTENSION)) {
+    specifier = specifier.slice(0, -JAVASCRIPT_EXTENSION.length);
+
+    return `${specifier}${EXTENSION}`;
+  }
+
+  return specifier;
 }
