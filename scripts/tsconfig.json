@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "allowImportingTsExtensions": true,
+    "composite": false,
     "noEmit": true
   },
   "extends": "../tsconfig.base.json"
