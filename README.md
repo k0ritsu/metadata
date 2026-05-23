@@ -8,7 +8,7 @@ runtime context.
 
 ## Requirements
 
-- Node.js `24.15.0`
+- Node.js `24.16.0`
 - npm
 - Docker and Docker Compose, optional
 
