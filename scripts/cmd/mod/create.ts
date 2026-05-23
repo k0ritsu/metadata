@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util';
 import { MODULE, MODULES } from './common/constants.ts';
 import { assertModuleName } from './common/helpers/manifest.ts';
 import { createTsconfigs } from './common/helpers/tsconfig.ts';
-import type { ModManifest } from './common/types.ts';
+import type { ModuleManifest } from './common/types.ts';
 
 export async function create(args: string[]) {
   const { positionals } = parseArgs({
@@ -25,7 +25,7 @@ export async function create(args: string[]) {
     description: '',
     version: '0.1.0',
     dependencies: {}
-  } satisfies ModManifest;
+  } satisfies ModuleManifest;
 
   await mkdir(root);
   await writeFile(resolve(root, MODULE), JSON.stringify(mod, undefined, 2));

@@ -1,24 +1,24 @@
 import assert from 'node:assert';
 import { glob, rm, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { MODULE, MODULES } from '../constants.ts';
-import type { ModManifest } from '../types.ts';
-import { readModuleManifestFile } from './manifest.ts';
+import type { ModuleManifest } from '../types.ts';
+import { readModuleManifest } from './manifest.ts';
+import {
+  createDependencyCandidates,
+  type ResolvedModule
+} from './resolution.ts';
 
-interface ModRoot {
-  name: ModManifest['name'];
+interface ModuleRoot {
+  name: ModuleManifest['name'];
   root: string;
 }
 
-interface Mod extends ModRoot {
-  dependencies: NonNullable<ModManifest['dependencies']>;
-}
-
-const TSCONFIG_JSON = 'tsconfig.json';
+const TSCONFIG_PROJECT = 'tsconfig.json';
 
 const TSCONFIG_BASE = resolve('tsconfig.base.json');
 const TSCONFIG_BUILD = resolve('tsconfig.build.json');
-const TSCONFIG = resolve(TSCONFIG_JSON);
+const TSCONFIG = resolve(TSCONFIG_PROJECT);
 
 const CORE_ALIASES = {
   '#core/loader': resolve('src', 'loader', 'types.ts'),
@@ -27,12 +27,12 @@ const CORE_ALIASES = {
   '#core/store': resolve('src', 'store', 'types.ts')
 };
 
-export async function createTsconfigs(toUpdate?: ModRoot[]) {
+export async function createTsconfigs(toUpdate?: ModuleRoot[]) {
   const modules = await loadModules();
   await Promise.all([
     ...getUpdatedModules(modules, toUpdate).map((mod) => {
       return writeFile(
-        resolve(mod.root, TSCONFIG_JSON),
+        resolve(mod.root, TSCONFIG_PROJECT),
         JSON.stringify(createModuleTsconfig(mod, modules), undefined, 2)
       );
     }),
@@ -45,10 +45,10 @@ export async function createTsconfigs(toUpdate?: ModRoot[]) {
 }
 
 async function loadModules() {
-  const modules: Mod[] = [];
+  const modules: ResolvedModule[] = [];
 
   for await (const path of glob(resolve(MODULES, '**', MODULE))) {
-    const mod = await readModuleManifestFile(path, {
+    const mod = await readModuleManifest(path, {
       validateDependencyRanges: true
     });
 
@@ -56,14 +56,16 @@ async function loadModules() {
     modules.push({
       name: mod.name,
       root,
-      dependencies: mod.dependencies ?? {}
+      dependencies: mod.dependencies ?? {},
+      version: mod.version
     });
   }
 
   return modules.sort((left, right) => left.root.localeCompare(right.root));
 }
 
-function createModuleTsconfig(mod: Mod, modules: Mod[]) {
+function createModuleTsconfig(mod: ResolvedModule, modules: ResolvedModule[]) {
+  const modulesByRoot = new Map(modules.map((module) => [module.root, module]));
   const paths = Object.fromEntries(
     Object.entries(CORE_ALIASES).map(([alias, path]) => [
       alias,
@@ -86,14 +88,12 @@ function createModuleTsconfig(mod: Mod, modules: Mod[]) {
   ]);
 
   for (const dependencyName of Object.keys(mod.dependencies)) {
-    const dependencyRoots = createDependencyCandidates(
-      mod.root,
-      dependencyName
-    ).filter((root) => modules.some((module) => module.root === root));
-
-    if (dependencyRoots.length === 0) {
-      continue;
-    }
+    const dependency = resolveFilesystemDependency(
+      mod,
+      dependencyName,
+      modulesByRoot
+    );
+    const dependencyRoots = [dependency.root];
 
     const dependencyPaths = dependencyRoots.map((root) =>
       toTsconfigPath(mod.root, root)
@@ -133,7 +133,22 @@ function createModuleTsconfig(mod: Mod, modules: Mod[]) {
   };
 }
 
-function createBuildTsconfig(modules: Mod[]) {
+function resolveFilesystemDependency(
+  mod: ResolvedModule,
+  dependencyName: string,
+  modulesByRoot: Map<string, ResolvedModule>
+) {
+  for (const root of createDependencyCandidates(mod.root, dependencyName)) {
+    const dependency = modulesByRoot.get(root);
+    if (dependency) {
+      return dependency;
+    }
+  }
+
+  assert.fail(`${mod.name}: dependency ${dependencyName} is not installed`);
+}
+
+function createBuildTsconfig(modules: ResolvedModule[]) {
   const root = resolve('.');
 
   return {
@@ -149,7 +164,7 @@ function createBuildTsconfig(modules: Mod[]) {
   };
 }
 
-function getUpdatedModules(modules: Mod[], roots?: ModRoot[]) {
+function getUpdatedModules(modules: ResolvedModule[], roots?: ModuleRoot[]) {
   if (!roots) {
     return modules;
   }
@@ -167,7 +182,7 @@ function getUpdatedModules(modules: Mod[], roots?: ModRoot[]) {
 }
 
 function toTsconfigProjectPath(from: string, root: string) {
-  return toTsconfigPath(from, resolve(root, TSCONFIG_JSON));
+  return toTsconfigPath(from, resolve(root, TSCONFIG_PROJECT));
 }
 
 function toTsconfigPath(from: string, to: string) {
@@ -183,75 +198,11 @@ function toTsconfigPath(from: string, to: string) {
   return `./${path}`;
 }
 
-async function removeStaleModuleTsconfigs(modules: Mod[]) {
+async function removeStaleModuleTsconfigs(modules: ResolvedModule[]) {
   const root = new Set(modules.map((mod) => mod.root));
-  for await (const path of glob(resolve(MODULES, '**', TSCONFIG_JSON))) {
+  for await (const path of glob(resolve(MODULES, '**', TSCONFIG_PROJECT))) {
     if (!root.has(dirname(path))) {
       await rm(path);
     }
   }
-}
-
-export function createDependencyCandidates(
-  parentRoot: string,
-  dependency: string
-) {
-  const levels = getModuleLevels(parentRoot);
-  const candidates: string[] = [];
-
-  for (let depth = levels.length; depth > 0; depth -= 1) {
-    const [root, ...nested] = levels.slice(0, depth);
-    if (!root) {
-      continue;
-    }
-
-    candidates.push(
-      join(
-        MODULES,
-        root,
-        ...nested.flatMap((module) => ['modules', module]),
-        'modules',
-        dependency
-      )
-    );
-  }
-
-  candidates.push(join(MODULES, dependency));
-
-  return candidates;
-}
-
-function getModuleLevels(path: string) {
-  const relativePath = relative(MODULES, path);
-
-  if (
-    !relativePath ||
-    relativePath.startsWith('..') ||
-    isAbsolute(relativePath)
-  ) {
-    return [];
-  }
-
-  const segments = relativePath.split(sep).filter(Boolean);
-  const [root] = segments;
-
-  if (!root || root.includes('.')) {
-    return [];
-  }
-
-  const levels = [root];
-  let index = 1;
-
-  while (index + 1 < segments.length && segments[index] === 'modules') {
-    const nested = segments[index + 1];
-
-    if (!nested) {
-      break;
-    }
-
-    levels.push(nested);
-    index += 2;
-  }
-
-  return levels;
 }

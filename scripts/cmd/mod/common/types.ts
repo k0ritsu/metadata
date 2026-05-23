@@ -1,23 +1,22 @@
-export interface ModManifest {
+export interface ModuleManifest {
   name: string;
   description: string;
   version: string;
   enabled?: boolean;
   main?: string;
-  dependencies?: {
-    [mod: ModManifest['name']]: ModManifest['version'];
-  };
+  dependencies?: Record<ModuleManifest['name'], ModuleManifest['version']>;
 }
 
-export interface Modlock {
-  [mod: ModManifest['name']]: {
+export interface Modlock extends Record<
+  ModuleManifest['name'],
+  {
     dependencies: Modlock;
-    name: ModManifest['name'];
-    version: ModManifest['version'];
-  };
-}
+    name: ModuleManifest['name'];
+    version: ModuleManifest['version'];
+  }
+> {}
 
-export type ModlockNode = Modlock[string];
+export type ModlockNode = Modlock[ModuleManifest['name']];
 
 export interface Modrc {
   repository: string;

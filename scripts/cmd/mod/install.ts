@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, glob, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import semver from 'semver';
@@ -12,6 +12,7 @@ import {
 } from './common/helpers/manifest.ts';
 import { assertLockNode, readModlock } from './common/helpers/modlock.ts';
 import { isInsidePath } from './common/helpers/path.ts';
+import { createDependencyCandidates } from './common/helpers/resolution.ts';
 import {
   createRepositoryError,
   createRepositoryUrl,
@@ -21,7 +22,6 @@ import {
   extractInstallArchive,
   type TarFile
 } from './common/helpers/tarball.ts';
-import { createDependencyCandidates } from './common/helpers/tsconfig.ts';
 import type { Modlock } from './common/types.ts';
 import { init } from './init.ts';
 
@@ -61,6 +61,7 @@ export async function install(args: string[]) {
     for (const spec of positionals.map(parseInstallSpec)) {
       await installModule(spec, MODULES, options);
     }
+    await installTopLevelDependencies(options);
   }
 
   await init(['--repository', repository]);
@@ -86,16 +87,14 @@ async function installModule(
   options: InstallOptions
 ) {
   const version = await resolveVersion(options.repository, spec);
-  const root = await installResolvedModule(
+  const root = await installResolvedModuleAtRoot(
     {
       name: spec.name,
       version
     },
-    parentRoot,
+    resolve(parentRoot, spec.name),
     options
   );
-
-  await installDependencies(root, options);
 
   return root;
 }
@@ -107,12 +106,12 @@ async function installLockedModule(
 ) {
   assertLockNode(node);
 
-  return installResolvedModule(
+  return installResolvedModuleAtRoot(
     {
       name: node.name,
       version: node.version
     },
-    parentRoot,
+    resolve(parentRoot, node.name),
     options
   );
 }
@@ -125,36 +124,68 @@ async function installLockedDependencies(
   assertLockNode(node);
 
   for (const dependency of Object.values(node.dependencies)) {
-    const dependencyRoot = await installLockedModule(
+    const dependencyRoot = await installLockedDependency(
+      root,
       dependency,
-      resolve(root, 'modules'),
       options
     );
     await installLockedDependencies(dependencyRoot, dependency, options);
   }
 }
 
-async function installResolvedModule(
+async function installLockedDependency(
+  consumerRoot: string,
+  node: Modlock[string],
+  options: InstallOptions
+) {
+  assertLockNode(node);
+
+  const existing = await findInstalledDependency(
+    consumerRoot,
+    node.name,
+    node.version
+  );
+  if (existing) {
+    return existing;
+  }
+
+  return installResolvedModuleAtRoot(
+    {
+      name: node.name,
+      version: node.version
+    },
+    await selectDependencyInstallRoot(consumerRoot, node.name, node.version),
+    options
+  );
+}
+
+async function installResolvedModuleAtRoot(
   spec: Required<InstallSpec>,
-  parentRoot: string,
+  root: string,
   options: InstallOptions
 ) {
   const { version } = spec;
-  const key = `${parentRoot}:${spec.name}@${version}`;
+  const key = `${root}:${spec.name}@${version}`;
   const installed = options.installed.get(key);
 
   if (installed) {
     return installed;
   }
 
-  const existing = await findInstalledCandidate(parentRoot, spec.name, version);
-  if (existing) {
-    options.installed.set(key, existing);
+  const existing = await readManifestOrUndefined(root);
+  if (existing?.name === spec.name && existing.version === version) {
+    options.installed.set(key, root);
 
-    return existing;
+    return root;
   }
 
-  const root = resolve(parentRoot, spec.name);
+  if (existing) {
+    assert(
+      existing.name === spec.name,
+      `${root}: cannot install ${spec.name}@${version} over ${existing.name}@${existing.version}`
+    );
+  }
+
   const archive = await downloadArchive(options.repository, spec.name, version);
   const files = await extractInstallArchive(archive);
   const manifest = readManifest(files);
@@ -185,15 +216,46 @@ async function installDependencies(root: string, options: InstallOptions) {
   const manifest = await readInstalledManifest(root);
 
   for (const [name, version] of Object.entries(manifest.dependencies ?? {})) {
-    await installModule(
-      {
-        name,
-        version
-      },
-      resolve(root, 'modules'),
-      options
-    );
+    const dependencyRoot = await installDependency(root, name, version, options);
+    await installDependencies(dependencyRoot, options);
   }
+}
+
+async function installTopLevelDependencies(options: InstallOptions) {
+  const paths: string[] = [];
+  for await (const path of glob(resolve(MODULES, '*', MODULE))) {
+    paths.push(path);
+  }
+
+  for (const path of paths.sort((left, right) => left.localeCompare(right))) {
+    await installDependencies(dirname(path), options);
+  }
+}
+
+async function installDependency(
+  consumerRoot: string,
+  name: string,
+  range: string,
+  options: InstallOptions
+) {
+  const existing = await findInstalledDependency(consumerRoot, name, range);
+  if (existing) {
+    return existing;
+  }
+
+  const version = await resolveVersion(options.repository, {
+    name,
+    version: range
+  });
+
+  return installResolvedModuleAtRoot(
+    {
+      name,
+      version
+    },
+    await selectDependencyInstallRoot(consumerRoot, name, range),
+    options
+  );
 }
 
 function parseInstallSpec(spec: string): InstallSpec {
@@ -324,19 +386,53 @@ async function writeModule(root: string, files: TarFile[]) {
   }
 }
 
-async function findInstalledCandidate(
-  parentRoot: string,
+async function findInstalledDependency(
+  consumerRoot: string,
   name: string,
-  version: string
+  range: string
 ) {
-  for (const root of createDependencyCandidates(parentRoot, name)) {
+  for (const root of createDependencyCandidates(consumerRoot, name)) {
     const manifest = await readManifestOrUndefined(root);
-    if (manifest?.version === version) {
+    if (!manifest) {
+      continue;
+    }
+
+    if (semver.satisfies(manifest.version, range)) {
       return root;
     }
+
+    return undefined;
   }
 
   return undefined;
+}
+
+async function selectDependencyInstallRoot(
+  consumerRoot: string,
+  name: string,
+  range: string
+) {
+  const candidates = createDependencyCandidates(consumerRoot, name);
+  const local = candidates[0];
+  assert(local, `${name}: cannot select dependency install root`);
+
+  for (const root of candidates) {
+    const manifest = await readManifestOrUndefined(root);
+    if (!manifest) {
+      continue;
+    }
+
+    if (semver.satisfies(manifest.version, range)) {
+      return root;
+    }
+
+    return local;
+  }
+
+  const root = candidates.at(-1);
+  assert(root, `${name}: cannot select dependency install root`);
+
+  return root;
 }
 
 async function readManifestOrUndefined(root: string) {

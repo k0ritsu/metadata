@@ -1,12 +1,12 @@
 import assert from 'node:assert';
 import { readFile, stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import semver from 'semver';
 import { MODULE, MODULE_NAME } from '../constants.ts';
-import type { ModManifest } from '../types.ts';
+import type { ModuleManifest } from '../types.ts';
 import { isRecord } from './record.ts';
 
-interface ManifestOptions {
+interface ModuleManifestOptions {
   validateDependencyRanges?: boolean;
 }
 
@@ -22,20 +22,17 @@ export async function hasModuleManifest(root: string) {
 
 export async function readModuleManifest(
   root: string,
-  options: ManifestOptions = {}
+  options: ModuleManifestOptions = {}
 ) {
-  return readModuleManifestFile(resolve(root, MODULE), options);
-}
+  if (basename(root) !== MODULE) {
+    root = resolve(root, MODULE);
+  }
 
-export async function readModuleManifestFile(
-  path: string,
-  options: ManifestOptions = {}
-) {
   return parseModuleManifest(
-    await readFile(path, {
+    await readFile(root, {
       encoding: 'utf8'
     }),
-    path,
+    root,
     options
   );
 }
@@ -43,7 +40,7 @@ export async function readModuleManifestFile(
 export function parseModuleManifest(
   content: string,
   path: string,
-  options: ManifestOptions = {}
+  options: ModuleManifestOptions = {}
 ) {
   const mod: unknown = JSON.parse(content);
   assertModuleManifest(mod, path, options);
@@ -54,8 +51,8 @@ export function parseModuleManifest(
 function assertModuleManifest(
   value: unknown,
   path: string,
-  options: ManifestOptions = {}
-): asserts value is ModManifest {
+  options: ModuleManifestOptions = {}
+): asserts value is ModuleManifest {
   assert(isRecord(value), `${path}: manifest must be an object`);
 
   assert(typeof value['name'] === 'string', `${path}: name is required`);
@@ -74,7 +71,7 @@ function assertModuleManifest(
   }
 }
 
-export function assertModuleName(name: ModManifest['name']) {
+export function assertModuleName(name: ModuleManifest['name']) {
   assert(MODULE_NAME.test(name), `${name}: invalid module name`);
 }
 
@@ -86,14 +83,14 @@ export function assertDependencies(
 ) {
   assert(isRecord(dependencies), 'dependencies must be an object');
 
-  for (const [name, version] of Object.entries(dependencies)) {
-    assertModuleName(name);
+  for (const [dependency, version] of Object.entries(dependencies)) {
+    assertModuleName(dependency);
     assert(
       typeof version === 'string' &&
         (options.validateVersionRanges
           ? semver.validRange(version) !== null
           : isSemver(version)),
-      `${name}: invalid dependency version`
+      `${dependency}: invalid dependency version`
     );
   }
 }

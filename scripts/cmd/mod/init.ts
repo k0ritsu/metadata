@@ -2,29 +2,26 @@ import assert from 'node:assert';
 import { glob, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
-import semver from 'semver';
 import { MODLOCK, MODRC, MODULE, MODULES } from './common/constants.ts';
 import {
   assertDependencies,
-  readModuleManifestFile
+  readModuleManifest
 } from './common/helpers/manifest.ts';
 import { exists } from './common/helpers/path.ts';
 import { isRecord } from './common/helpers/record.ts';
 import {
-  createDependencyCandidates,
-  createTsconfigs
-} from './common/helpers/tsconfig.ts';
+  resolveDependency,
+  type ResolvedModule
+} from './common/helpers/resolution.ts';
+import { createTsconfigs } from './common/helpers/tsconfig.ts';
 import type {
   Modlock,
   ModlockNode,
-  ModManifest,
-  Modrc
+  Modrc,
+  ModuleManifest
 } from './common/types.ts';
 
-interface ResolvedModManifest extends ModManifest {
-  dependencies: NonNullable<ModManifest['dependencies']>;
-  root: string;
-}
+type ResolvedModManifest = ResolvedModule & ModuleManifest;
 
 export async function init(args: string[]) {
   const { values } = parseArgs({
@@ -115,7 +112,7 @@ async function loadModules() {
   const modules: ResolvedModManifest[] = [];
 
   for await (const path of glob(resolve(MODULES, '**', MODULE))) {
-    const mod = await readModuleManifestFile(path, {
+    const mod = await readModuleManifest(path, {
       validateDependencyRanges: true
     });
 
@@ -129,7 +126,7 @@ async function loadModules() {
   return modules.sort((left, right) => left.root.localeCompare(right.root));
 }
 
-function ensureDependencies(dependencies: ModManifest['dependencies'] = {}) {
+function ensureDependencies(dependencies: ModuleManifest['dependencies'] = {}) {
   assertDependencies(dependencies, {
     validateVersionRanges: true
   });
@@ -150,13 +147,9 @@ function buildModlockNode(
   for (const [name, version] of Object.entries(mod.dependencies)) {
     const dependency = resolveDependency(mod, name, version, modulesByRoot);
     if (nextStack.has(dependency.root)) {
-      dependencies[name] = {
-        dependencies: {},
-        name: dependency.name,
-        version: dependency.version
-      };
-
-      continue;
+      assert.fail(
+        `${mod.name}: circular dependency detected through ${dependency.name}`
+      );
     }
 
     dependencies[name] = buildModlockNode(dependency, modulesByRoot, nextStack);
@@ -167,22 +160,6 @@ function buildModlockNode(
     name: mod.name,
     version: mod.version
   };
-}
-
-function resolveDependency(
-  mod: ResolvedModManifest,
-  name: string,
-  range: string,
-  modulesByRoot: Map<string, ResolvedModManifest>
-) {
-  for (const root of createDependencyCandidates(mod.root, name)) {
-    const candidate = modulesByRoot.get(root);
-    if (candidate && semver.satisfies(candidate.version, range)) {
-      return candidate;
-    }
-  }
-
-  assert.fail(`${mod.name}: dependency ${name}@${range} is not installed`);
 }
 
 function isTopLevelModuleRoot(root: string) {

@@ -1,7 +1,7 @@
-import type { ModManifest } from '../types.ts';
+import type { ModuleManifest } from '../types.ts';
 
-export type Key = `${ModManifest['name']}@${ModManifest['version']}`;
+export type Key = `${ModuleManifest['name']}@${ModuleManifest['version']}`;
 
-export function createKey(node: Pick<ModManifest, 'name' | 'version'>): Key {
+export function createKey(node: Pick<ModuleManifest, 'name' | 'version'>): Key {
   return `${node.name}@${node.version}`;
 }

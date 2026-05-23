@@ -132,6 +132,9 @@ The registration context contains:
 - `logger`: application logger.
 - `modules`: loaded module metadata and entrypoints.
 
+Version placement, generated TypeScript aliases, and runtime alias lookup are
+described in [Module Resolution](docs/module-resolution.md).
+
 ## Module CLI
 
 The module CLI is implemented in `scripts/mod.ts`.
