@@ -1,33 +1,39 @@
 import { glob, readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import type { Mod, ModMain } from './types.js';
+import { dirname, resolve } from 'node:path';
+import type { ModuleMain, ModuleManifest } from './types.js';
 
 const MODULE = 'module.json';
 
 export async function loadModules() {
   const modules: Array<
-    Omit<Mod, 'main'> & {
-      main: ModMain;
+    Omit<ModuleManifest, 'main'> & {
+      main: ModuleMain;
     }
   > = [];
 
-  for await (const path of glob(
-    resolve(import.meta.dirname, '..', 'modules', '*', MODULE),
+  const entry = process.argv[1];
+  if (!entry) {
+    return modules;
+  }
+
+  for await (const dirent of glob(
+    resolve(dirname(entry), 'modules', '*', MODULE),
     {
       withFileTypes: true
     }
   )) {
-    const mod: Mod = JSON.parse(
-      await readFile(resolve(path.parentPath, path.name), {
+    const manifest: ModuleManifest = JSON.parse(
+      await readFile(resolve(dirent.parentPath, dirent.name), {
         encoding: 'utf8'
       })
     );
 
-    if (mod.main && mod.enabled) {
-      const main: ModMain = await import(resolve(path.parentPath, mod.main));
+    if (manifest.enabled && manifest.main) {
+      const path = resolve(dirent.parentPath, manifest.main);
+      const main: ModuleMain = await import(path);
 
       modules.push({
-        ...mod,
+        ...manifest,
         main
       });
     }
