@@ -19,7 +19,7 @@ export interface ModuleManifest {
   version: string;
   enabled?: boolean;
   main?: string;
-  dependencies: Record<ModuleManifest['name'], ModuleManifest['version']>;
+  dependencies?: Record<ModuleManifest['name'], ModuleManifest['version']>;
 }
 
 export interface ModuleMain {
