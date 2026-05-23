@@ -1,5 +1,5 @@
 import { v7 } from 'uuid';
-import type { Config } from './config/config.js';
+import type { Config } from './config/types.js';
 import { loadModules } from './loader/loader.js';
 import { createJsonHandler, createLogger } from './logger/logger.js';
 import { createRouter } from './router/router.js';
