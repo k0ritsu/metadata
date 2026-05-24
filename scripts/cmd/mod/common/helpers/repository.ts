@@ -31,18 +31,9 @@ export async function resolveRepository(repository?: string) {
   return modrc.repository;
 }
 
-async function resolveModrc() {
-  const path = resolve(MODULES, MODRC);
-
-  if (await exists(path)) {
-    return path;
-  }
-
-  return undefined;
-}
-
 export function createRepositoryUrl(repository: string, path: string) {
   const base = repository.endsWith('/') ? repository : `${repository}/`;
+
   return new URL(path.replace(/^\/+/, ''), base);
 }
 
@@ -65,4 +56,15 @@ export function createRepositoryError(
   } catch {}
 
   return `${fallback}: ${body}`;
+}
+
+async function resolveModrc() {
+  const path = resolve(MODULES, MODRC);
+
+  const found = await exists(path);
+  if (!found) {
+    return;
+  }
+
+  return path;
 }
