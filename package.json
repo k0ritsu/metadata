@@ -4,7 +4,7 @@
   "description": "Modular metadata management system",
   "scripts": {
     "start": "node --import ./dist/modules/import.js dist/main.js",
-    "prebuild": "node scripts/mod.ts init",
+    "prebuild": "node scripts/mod.ts tidy",
     "build": "tsc -b tsconfig.build.json",
     "postbuild": "node scripts/mod.ts build",
     "dev": "node --watch --env-file .env --import ./src/modules/import.ts src/main.ts",

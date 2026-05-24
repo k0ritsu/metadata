@@ -1,7 +1,15 @@
-import type { ModuleManifest } from '../types.ts';
+export function createModuleKey(name: string, version: string) {
+  return `${name}@${version}`;
+}
 
-export type Key = `${ModuleManifest['name']}@${ModuleManifest['version']}`;
+export function parseModuleKey(key: string) {
+  const index = key.lastIndexOf('@');
+  if (index <= 0 || index === key.length - 1) {
+    throw new Error(`${key}: invalid module key`);
+  }
 
-export function createKey(node: Pick<ModuleManifest, 'name' | 'version'>): Key {
-  return `${node.name}@${node.version}`;
+  return {
+    name: key.slice(0, index),
+    version: key.slice(index + 1)
+  };
 }

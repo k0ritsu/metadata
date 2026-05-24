@@ -4,45 +4,10 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { pathToFileURL } from 'node:url';
-import { createRepositoryUrl } from './common/helpers/repository.ts';
 
-test('init keeps nested modules out of root lock and resolves ranges', () => {
+test('init creates repository config and a minimal lockfile', () => {
   const root = mkdtempSync(join(tmpdir(), 'metadata-mod-init-'));
   const modules = join(root, 'src', 'modules');
-
-  mkdirSync(join(modules, 'app', 'modules', 'lib'), {
-    recursive: true
-  });
-  writeFileSync(join(root, 'tsconfig.base.json'), '{}');
-  writeFileSync(join(root, 'tsconfig.json'), '{}');
-  writeFileSync(
-    join(modules, 'app', 'module.json'),
-    JSON.stringify(
-      {
-        name: 'app',
-        description: '',
-        version: '1.0.0',
-        dependencies: {
-          lib: '^1.0.0'
-        }
-      },
-      undefined,
-      2
-    )
-  );
-  writeFileSync(
-    join(modules, 'app', 'modules', 'lib', 'module.json'),
-    JSON.stringify(
-      {
-        name: 'lib',
-        description: '',
-        version: '1.2.0'
-      },
-      undefined,
-      2
-    )
-  );
 
   execFileSync(
     process.execPath,
@@ -52,143 +17,44 @@ test('init keeps nested modules out of root lock and resolves ranges', () => {
     }
   );
 
-  const modlock = JSON.parse(
-    readFileSync(join(modules, 'modlock.json'), 'utf8')
-  );
-
-  assert.deepEqual(Object.keys(modlock), ['app']);
-  assert.equal(modlock.app.dependencies.lib.version, '1.2.0');
-});
-
-test('tsconfig paths resolve to the nearest filesystem dependency', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'metadata-mod-init-'));
-  const modules = join(root, 'src', 'modules');
-
-  mkdirSync(join(modules, 'app', 'modules', 'lib'), {
-    recursive: true
-  });
-  mkdirSync(join(modules, 'lib'), {
-    recursive: true
-  });
-  writeFileSync(join(root, 'tsconfig.base.json'), '{}');
-  writeFileSync(join(root, 'tsconfig.json'), '{}');
-  writeFileSync(
-    join(modules, 'app', 'module.json'),
-    JSON.stringify({
-      name: 'app',
-      description: '',
-      version: '1.0.0',
-      dependencies: {
-        lib: '^2.0.0'
-      }
-    })
-  );
-  writeFileSync(
-    join(modules, 'app', 'modules', 'lib', 'module.json'),
-    JSON.stringify({
-      name: 'lib',
-      description: '',
-      version: '1.2.0'
-    })
-  );
-  writeFileSync(
-    join(modules, 'lib', 'module.json'),
-    JSON.stringify({
-      name: 'lib',
-      description: '',
-      version: '2.0.0'
-    })
-  );
-
-  const createTsconfigsUrl = String(
-    pathToFileURL(resolve('scripts/cmd/mod/common/helpers/tsconfig.ts'))
-  );
-  execFileSync(
-    process.execPath,
-    [
-      '--input-type=module',
-      '--eval',
-      `import { createTsconfigs } from ${JSON.stringify(createTsconfigsUrl)}; await createTsconfigs();`
-    ],
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(modules, 'modrc.json'), 'utf8')),
     {
-      cwd: root
+      repository: 'http://localhost'
     }
   );
-
-  const tsconfig = JSON.parse(
-    readFileSync(join(modules, 'app', 'tsconfig.json'), 'utf8')
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(modules, 'modlock.json'), 'utf8')),
+    {
+      lockfileVersion: 1,
+      modules: {
+        '': {
+          dependencies: {}
+        }
+      }
+    }
   );
-
-  assert.deepEqual(tsconfig.compilerOptions.paths['#modules/lib'], [
-    './modules/lib'
-  ]);
 });
 
-test('init rejects dependency cycles', () => {
+test('init does not scan modules', () => {
   const root = mkdtempSync(join(tmpdir(), 'metadata-mod-init-'));
   const modules = join(root, 'src', 'modules');
 
-  mkdirSync(join(modules, 'app', 'modules', 'lib'), {
+  mkdirSync(join(modules, 'new-module'), {
     recursive: true
   });
-  writeFileSync(join(root, 'tsconfig.base.json'), '{}');
-  writeFileSync(join(root, 'tsconfig.json'), '{}');
   writeFileSync(
-    join(modules, 'app', 'module.json'),
+    join(modules, 'new-module', 'module.json'),
     JSON.stringify({
-      name: 'app',
+      name: 'new-module',
       description: '',
-      version: '1.0.0',
-      dependencies: {
-        lib: '1.0.0'
-      }
+      version: '1.0.0'
     })
   );
-  writeFileSync(
-    join(modules, 'app', 'modules', 'lib', 'module.json'),
-    JSON.stringify({
-      name: 'lib',
-      description: '',
-      version: '1.0.0',
-      dependencies: {
-        app: '1.0.0'
-      }
-    })
-  );
-
-  assert.throws(() => {
-    execFileSync(
-      process.execPath,
-      [resolve('scripts', 'mod.ts'), 'init', '--repository', 'http://localhost'],
-      {
-        cwd: root,
-        stdio: 'pipe'
-      }
-    );
-  }, /circular dependency/);
-});
-
-test('init migrates legacy registry config to repository config', () => {
-  const root = mkdtempSync(join(tmpdir(), 'metadata-mod-init-'));
-  const modules = join(root, 'src', 'modules');
-
-  mkdirSync(join(modules, 'app'), {
-    recursive: true
-  });
-  writeFileSync(join(root, 'tsconfig.base.json'), '{}');
-  writeFileSync(join(root, 'tsconfig.json'), '{}');
   writeFileSync(
     join(modules, 'modrc.json'),
     JSON.stringify({
-      registry: 'http://localhost:1337/api'
-    })
-  );
-  writeFileSync(
-    join(modules, 'app', 'module.json'),
-    JSON.stringify({
-      name: 'app',
-      description: '',
-      version: '1.0.0'
+      repository: 'http://localhost:1337'
     })
   );
 
@@ -196,18 +62,54 @@ test('init migrates legacy registry config to repository config', () => {
     cwd: root
   });
 
-  assert.deepEqual(JSON.parse(readFileSync(join(modules, 'modrc.json'), 'utf8')), {
-    repository: 'http://localhost:1337/api'
-  });
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(modules, 'modlock.json'), 'utf8')),
+    {
+      lockfileVersion: 1,
+      modules: {
+        '': {
+          dependencies: {}
+        }
+      }
+    }
+  );
 });
 
-test('repository URLs preserve repository base paths', () => {
-  assert.equal(
-    String(createRepositoryUrl('http://localhost:1337/api', 'modules/app')),
-    'http://localhost:1337/api/modules/app'
+test('init does not rewrite an existing lockfile', () => {
+  const root = mkdtempSync(join(tmpdir(), 'metadata-mod-init-'));
+  const modules = join(root, 'src', 'modules');
+
+  const existing = {
+    lockfileVersion: 1,
+    modules: {
+      '': {
+        dependencies: {
+          app: '1.0.0'
+        }
+      },
+      'app@1.0.0': {
+        dependencies: {}
+      }
+    }
+  };
+
+  mkdirSync(modules, {
+    recursive: true
+  });
+  writeFileSync(
+    join(modules, 'modrc.json'),
+    JSON.stringify({
+      repository: 'http://localhost:1337'
+    })
   );
+  writeFileSync(join(modules, 'modlock.json'), JSON.stringify(existing));
+
+  execFileSync(process.execPath, [resolve('scripts', 'mod.ts'), 'init'], {
+    cwd: root
+  });
+
   assert.equal(
-    String(createRepositoryUrl('http://localhost:1337/api/', '/modules/app')),
-    'http://localhost:1337/api/modules/app'
+    readFileSync(join(modules, 'modlock.json'), 'utf8'),
+    JSON.stringify(existing)
   );
 });

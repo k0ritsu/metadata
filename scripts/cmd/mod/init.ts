@@ -1,29 +1,18 @@
-import assert from 'node:assert';
-import { glob, readFile, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import assert from 'node:assert/strict';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { MODLOCK, MODRC, MODULE, MODULES } from './common/constants.ts';
+import { MODLOCK, MODRC, MODULES } from './common/constants.ts';
 import {
-  assertDependencies,
-  readModuleManifest
-} from './common/helpers/manifest.ts';
+  createEmptyModlock,
+  readModlock,
+  writeModlock
+} from './common/helpers/modlock.ts';
 import { exists } from './common/helpers/path.ts';
 import { isRecord } from './common/helpers/record.ts';
-import {
-  resolveDependency,
-  type ResolvedModule
-} from './common/helpers/resolution.ts';
-import { createTsconfigs } from './common/helpers/tsconfig.ts';
-import type {
-  Modlock,
-  ModlockNode,
-  Modrc,
-  ModuleManifest
-} from './common/types.ts';
+import type { CommandHandler, Modrc } from './common/types.ts';
 
-type ResolvedModManifest = ResolvedModule & ModuleManifest;
-
-export async function init(args: string[]) {
+export const init: CommandHandler = async (args: string[]) => {
   const { values } = parseArgs({
     strict: true,
     options: {
@@ -34,13 +23,11 @@ export async function init(args: string[]) {
     args
   });
 
-  const modlock = await buildModlock();
-  await Promise.all([
-    writeModrc(values.repository),
-    writeFile(resolve(MODULES, MODLOCK), JSON.stringify(modlock, undefined, 2)),
-    createTsconfigs()
-  ]);
-}
+  await mkdir(MODULES, {
+    recursive: true
+  });
+  await Promise.all([writeModrc(values.repository), writeInitialModlock()]);
+};
 
 async function writeModrc(repository?: string) {
   const path = resolve(MODULES, MODRC);
@@ -51,22 +38,12 @@ async function writeModrc(repository?: string) {
       })
     );
 
-    assert(isRecord(modrc), `${path}: ${MODRC} must be an object`);
+    assertModrc(modrc, path);
 
-    const currentRepository =
-      typeof modrc['repository'] === 'string'
-        ? modrc['repository']
-        : typeof modrc['registry'] === 'string'
-          ? modrc['registry']
-          : undefined;
-    const nextRepository = repository ?? currentRepository;
-
+    const nextRepository = repository ?? modrc['repository'];
     assert(nextRepository, `${path}: repository is required`);
 
-    if (
-      modrc['repository'] === nextRepository &&
-      modrc['registry'] === undefined
-    ) {
+    if (modrc['repository'] === nextRepository) {
       return;
     }
 
@@ -96,79 +73,25 @@ async function writeModrc(repository?: string) {
   );
 }
 
-async function buildModlock() {
-  const modules = await loadModules();
-  const modulesByRoot = new Map(modules.map((mod) => [mod.root, mod]));
-  const modlock: Modlock = {};
-
-  for (const mod of modules.filter((mod) => isTopLevelModuleRoot(mod.root))) {
-    modlock[mod.name] = buildModlockNode(mod, modulesByRoot, new Set<string>());
+async function writeInitialModlock() {
+  const path = resolve(MODULES, MODLOCK);
+  if (await exists(path)) {
+    await readModlock();
+    return;
   }
 
-  return modlock;
+  await writeModlock(createEmptyModlock());
 }
 
-async function loadModules() {
-  const modules: ResolvedModManifest[] = [];
+function assertModrc(
+  value: unknown,
+  path: string
+): asserts value is Partial<Modrc> {
+  assert(isRecord(value), `${path}: modrc must be an object`);
 
-  for await (const path of glob(resolve(MODULES, '**', MODULE))) {
-    const mod = await readModuleManifest(path, {
-      validateDependencyRanges: true
-    });
-
-    modules.push({
-      ...mod,
-      dependencies: ensureDependencies(mod.dependencies),
-      root: dirname(path)
-    });
-  }
-
-  return modules.sort((left, right) => left.root.localeCompare(right.root));
-}
-
-function ensureDependencies(dependencies: ModuleManifest['dependencies'] = {}) {
-  assertDependencies(dependencies, {
-    validateVersionRanges: true
-  });
-
-  return dependencies;
-}
-
-function buildModlockNode(
-  mod: ResolvedModManifest,
-  modulesByRoot: Map<string, ResolvedModManifest>,
-  stack: Set<string>
-): ModlockNode {
-  const dependencies: Modlock = {};
-
-  const nextStack = new Set<string>(stack);
-  nextStack.add(mod.root);
-
-  for (const [name, version] of Object.entries(mod.dependencies)) {
-    const dependency = resolveDependency(mod, name, version, modulesByRoot);
-    if (nextStack.has(dependency.root)) {
-      assert.fail(
-        `${mod.name}: circular dependency detected through ${dependency.name}`
-      );
-    }
-
-    dependencies[name] = buildModlockNode(dependency, modulesByRoot, nextStack);
-  }
-
-  return {
-    dependencies,
-    name: mod.name,
-    version: mod.version
-  };
-}
-
-function isTopLevelModuleRoot(root: string) {
-  const relativePath = relative(MODULES, root);
-
-  return (
-    Boolean(relativePath) &&
-    !relativePath.startsWith('..') &&
-    !isAbsolute(relativePath) &&
-    relativePath.split(sep).filter(Boolean).length === 1
+  const repository = value['repository'];
+  assert(
+    typeof repository === 'string' || typeof repository === 'undefined',
+    `${path}: modrc is corrupted`
   );
 }

@@ -5,8 +5,9 @@ export function isInsidePath(path: string, root: string) {
   const relativePath = relative(root, path);
 
   return (
-    relativePath === '' ||
-    (!relativePath.startsWith('..') && !isAbsolute(relativePath))
+    relativePath !== '' &&
+    !relativePath.startsWith('..') &&
+    !isAbsolute(relativePath)
   );
 }
 

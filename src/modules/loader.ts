@@ -21,12 +21,12 @@ export interface Modlock {
 }
 
 const NODE_MODULES = join(cwd(), 'node_modules');
+
 const MODULES = import.meta.dirname;
+const CACHE = join(MODULES, '.cache');
 
 const MODULES_ALIAS = '#modules/';
-
-const CACHE = '.cache';
-const ROOT = '';
+const ROOT_NODE = '';
 
 const EXTENSION = extname(import.meta.filename);
 const JAVASCRIPT_EXTENSION = '.js';
@@ -54,21 +54,6 @@ export const resolve: ResolveHook = (specifier, context, nextResolve) => {
 export const load: LoadHook = (url, context, nextLoad) => {
   return nextLoad(url, context);
 };
-
-function isInsidePath(context: ResolveHookContext, path: string) {
-  const parentPath = getParentPath(context);
-  if (!parentPath) {
-    return false;
-  }
-
-  const relativePath = relative(path, parentPath);
-
-  return (
-    relativePath !== '' &&
-    !relativePath.startsWith('..') &&
-    !isAbsolute(relativePath)
-  );
-}
 
 function resolveModuleSpecifier(
   specifier: string,
@@ -123,7 +108,7 @@ function getImporterKey(context: ResolveHookContext, specifier: string) {
     throw new Error(`cannot determine importing module for "${specifier}"`);
   }
 
-  if (root === CACHE) {
+  if (isInsidePath(context, CACHE)) {
     if (!module) {
       throw new Error(`cannot determine dependency module for "${specifier}"`);
     }
@@ -133,16 +118,7 @@ function getImporterKey(context: ResolveHookContext, specifier: string) {
     return module;
   }
 
-  return createModuleKey(root, getDependencyVersion(ROOT, root));
-}
-
-function getParentPath(context: ResolveHookContext) {
-  const { parentURL } = context;
-  if (parentURL?.startsWith('file:')) {
-    return fileURLToPath(parentURL);
-  }
-
-  return;
+  return createModuleKey(root, getDependencyVersion(ROOT_NODE, root));
 }
 
 function createModuleKey(dependency: string, version: string) {
@@ -180,11 +156,35 @@ function resolveDependencyRoot(
 ) {
   return isRootDependency(dependency, version)
     ? join(MODULES, dependency)
-    : join(MODULES, CACHE, options.module);
+    : join(CACHE, options.module);
 }
 
 function isRootDependency(dependency: string, version: string) {
-  return modules[ROOT]?.dependencies[dependency] === version;
+  return modules[ROOT_NODE]?.dependencies[dependency] === version;
+}
+
+function isInsidePath(context: ResolveHookContext, root: string) {
+  const parentPath = getParentPath(context);
+  if (!parentPath) {
+    return false;
+  }
+
+  const relativePath = relative(root, parentPath);
+
+  return (
+    relativePath !== '' &&
+    !relativePath.startsWith('..') &&
+    !isAbsolute(relativePath)
+  );
+}
+
+function getParentPath(context: ResolveHookContext) {
+  const { parentURL } = context;
+  if (parentURL?.startsWith('file:')) {
+    return fileURLToPath(parentURL);
+  }
+
+  return;
 }
 
 function withRuntimeExtension(specifier: string): string {

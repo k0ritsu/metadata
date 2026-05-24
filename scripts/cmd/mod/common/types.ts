@@ -1,3 +1,7 @@
+export interface CommandHandler {
+  (args: string[]): Promise<void>;
+}
+
 export interface ModuleManifest {
   name: string;
   description: string;
@@ -9,17 +13,14 @@ export interface ModuleManifest {
 
 export interface Modlock {
   lockfileVersion: number;
-  modules: Record<
-    string,
-    {
-      dependencies: Record<string, string>;
-      integrity?: string;
-      resolved?: string;
-    }
-  >;
+  modules: Record<string, ModlockNode>;
 }
 
-export type ModlockNode = Modlock['modules'][string];
+export interface ModlockNode {
+  dependencies: Record<string, string>;
+  integrity?: string;
+  resolved?: string;
+}
 
 export interface Modrc {
   repository: string;
