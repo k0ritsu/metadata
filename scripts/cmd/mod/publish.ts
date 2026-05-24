@@ -1,12 +1,15 @@
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { MODULE, MODULE_NAME } from './common/constants.ts';
+import { MODULE, MODULES, ROOT_NODE } from './common/constants.ts';
+import { createModuleIntegrity } from './common/helpers/integrity.ts';
+import { createModuleKey } from './common/helpers/key.ts';
 import {
-  hasModuleManifest,
+  assertModuleName,
   readModuleManifest
 } from './common/helpers/manifest.ts';
+import { readModlock, writeModlock } from './common/helpers/modlock.ts';
 import { normalizePath } from './common/helpers/path.ts';
 import { isRecord } from './common/helpers/record.ts';
 import {
@@ -15,15 +18,17 @@ import {
   resolveRepository
 } from './common/helpers/repository.ts';
 import { createGzipTarArchive } from './common/helpers/tarball.ts';
+import type { CommandHandler } from './common/types.ts';
 
 interface PublishResult {
   name: string;
   version: string;
   repositoryUrl?: string;
   archiveUrl?: string;
+  resolved?: string;
 }
 
-export async function publish(args: string[]) {
+export const publish: CommandHandler = async (args: string[]) => {
   const { positionals, values } = parseArgs({
     strict: true,
     allowPositionals: true,
@@ -35,16 +40,32 @@ export async function publish(args: string[]) {
     args
   });
 
-  assert(positionals.length <= 1, 'publish accepts at most one module path');
+  assert(positionals.length === 1, 'module name is required');
 
-  const root = await resolvePublishRoot(positionals[0]);
+  const [name = ''] = positionals;
+  assertModuleName(name);
+
+  const root = resolve(MODULES, name);
   const mod = await readPublishManifest(root);
+  assert(
+    mod.name === name,
+    `${root}: module directory must match module name ${mod.name}`
+  );
+
   const [archive, repository] = await Promise.all([
     createPublishArchive(root),
     resolveRepository(values.repository)
   ]);
 
   const result = await postPublish(repository, mod.name, archive);
+  assert(
+    result.name === mod.name && result.version === mod.version,
+    `repository returned ${result.name}@${result.version}, expected ${mod.name}@${mod.version}`
+  );
+  const resolved = result.resolved ?? result.archiveUrl;
+  assert(resolved, 'repository returned no resolved URL');
+
+  await updatePublishedLockfile(root, result, resolved);
 
   console.log(`Published ${result.name}@${result.version}`);
 
@@ -52,30 +73,8 @@ export async function publish(args: string[]) {
     console.log(`Repository: ${result.repositoryUrl}`);
   }
 
-  if (result.archiveUrl) {
-    console.log(`Archive: ${result.archiveUrl}`);
-  }
-}
-
-async function resolvePublishRoot(input: string | undefined) {
-  if (input === undefined) {
-    return resolve('.');
-  }
-
-  const root = resolve(input);
-  if (await hasModuleManifest(root)) {
-    return root;
-  }
-
-  if (MODULE_NAME.test(input)) {
-    const modulesRoot = resolve('src', 'modules', input);
-    if (await hasModuleManifest(modulesRoot)) {
-      return modulesRoot;
-    }
-  }
-
-  return root;
-}
+  console.log(`Archive: ${resolved}`);
+};
 
 async function readPublishManifest(root: string) {
   const mod = await readModuleManifest(root, {
@@ -86,6 +85,29 @@ async function readPublishManifest(root: string) {
     name: mod.name,
     version: mod.version
   };
+}
+
+async function updatePublishedLockfile(
+  root: string,
+  result: PublishResult,
+  resolved: string
+) {
+  const modlock = await readModlock();
+  const key = createModuleKey(result.name, result.version);
+  const rootVersion = modlock.modules[ROOT_NODE]?.dependencies[result.name];
+
+  assert(
+    rootVersion === result.version,
+    `${result.name}@${result.version}: module is not installed as a root module`
+  );
+
+  const node = modlock.modules[key];
+  assert(node, `${key}: module is missing from modlock`);
+
+  node.integrity = await createModuleIntegrity(root);
+  node.resolved = resolved;
+
+  await writeModlock(modlock);
 }
 
 async function createPublishArchive(root: string) {
@@ -180,5 +202,20 @@ function assertPublishResult(value: unknown): asserts value is PublishResult {
       typeof value['name'] === 'string' &&
       typeof value['version'] === 'string',
     'repository returned invalid publish result'
+  );
+
+  assert(
+    value['resolved'] === undefined || typeof value['resolved'] === 'string',
+    'repository returned invalid resolved URL'
+  );
+  assert(
+    value['archiveUrl'] === undefined ||
+      typeof value['archiveUrl'] === 'string',
+    'repository returned invalid archive URL'
+  );
+  assert(
+    value['repositoryUrl'] === undefined ||
+      typeof value['repositoryUrl'] === 'string',
+    'repository returned invalid repository URL'
   );
 }

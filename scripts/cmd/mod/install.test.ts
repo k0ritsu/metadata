@@ -26,7 +26,9 @@ function runInstall(
   const tarballUrl = String(
     pathToFileURL(resolve('scripts/cmd/mod/common/helpers/tarball.ts'))
   );
-  const installUrl = String(pathToFileURL(resolve('scripts/cmd/mod/install.ts')));
+  const installUrl = String(
+    pathToFileURL(resolve('scripts/cmd/mod/install.ts'))
+  );
 
   execFileSync(
     process.execPath,
@@ -112,7 +114,7 @@ await install(${JSON.stringify([
   );
 }
 
-test('install hoists compatible dependencies and nests conflicts', () => {
+test('install places dependency conflicts in flat cache entries', () => {
   const root = mkdtempSync(join(tmpdir(), 'metadata-mod-install-'));
   const modules = join(root, 'src', 'modules');
   const repository = new Map<string, TestModule>([
@@ -160,20 +162,21 @@ test('install hoists compatible dependencies and nests conflicts', () => {
 
   runInstall(root, repository, ['app@1.0.0', 'tool@1.0.0']);
 
-  assert.equal(existsSync(join(modules, 'lib', 'module.json')), true);
+  assert.equal(existsSync(join(modules, 'lib', 'module.json')), false);
   assert.equal(
-    existsSync(join(modules, 'tool', 'modules', 'lib', 'module.json')),
+    existsSync(join(modules, '.cache', 'lib@1.2.0', 'module.json')),
+    true
+  );
+  assert.equal(
+    existsSync(join(modules, '.cache', 'lib@2.0.0', 'module.json')),
     true
   );
 
-  const rootLib = JSON.parse(
-    readFileSync(join(modules, 'lib', 'module.json'), 'utf8')
+  const appLib = JSON.parse(
+    readFileSync(join(modules, '.cache', 'lib@1.2.0', 'module.json'), 'utf8')
   );
-  const nestedLib = JSON.parse(
-    readFileSync(
-      join(modules, 'tool', 'modules', 'lib', 'module.json'),
-      'utf8'
-    )
+  const toolLib = JSON.parse(
+    readFileSync(join(modules, '.cache', 'lib@2.0.0', 'module.json'), 'utf8')
   );
   const appTsconfig = JSON.parse(
     readFileSync(join(modules, 'app', 'tsconfig.json'), 'utf8')
@@ -182,17 +185,17 @@ test('install hoists compatible dependencies and nests conflicts', () => {
     readFileSync(join(modules, 'tool', 'tsconfig.json'), 'utf8')
   );
 
-  assert.equal(rootLib.version, '1.2.0');
-  assert.equal(nestedLib.version, '2.0.0');
+  assert.equal(appLib.version, '1.2.0');
+  assert.equal(toolLib.version, '2.0.0');
   assert.deepEqual(appTsconfig.compilerOptions.paths['#modules/lib'], [
-    '../lib'
+    '../.cache/lib@1.2.0'
   ]);
   assert.deepEqual(toolTsconfig.compilerOptions.paths['#modules/lib'], [
-    './modules/lib'
+    '../.cache/lib@2.0.0'
   ]);
 });
 
-test('install keeps nested conflicts local to the dependent module', () => {
+test('install resolves transitive conflicts by importer module key', () => {
   const root = mkdtempSync(join(tmpdir(), 'metadata-mod-install-'));
   const modules = join(root, 'src', 'modules');
   const repository = new Map<string, TestModule>([
@@ -248,23 +251,17 @@ test('install keeps nested conflicts local to the dependent module', () => {
 
   runInstall(root, repository, ['plugin@2.0.0', 'app@1.0.0']);
 
-  assert.equal(existsSync(join(modules, 'lib', 'module.json')), true);
+  assert.equal(existsSync(join(modules, 'lib', 'module.json')), false);
   assert.equal(
-    existsSync(join(modules, 'app', 'modules', 'lib', 'module.json')),
-    false
+    existsSync(join(modules, '.cache', 'lib@1.2.0', 'module.json')),
+    true
   );
   assert.equal(
-    existsSync(
-      join(
-        modules,
-        'app',
-        'modules',
-        'plugin',
-        'modules',
-        'lib',
-        'module.json'
-      )
-    ),
+    existsSync(join(modules, '.cache', 'plugin@1.0.0', 'module.json')),
+    true
+  );
+  assert.equal(
+    existsSync(join(modules, '.cache', 'lib@2.0.0', 'module.json')),
     true
   );
 
@@ -273,15 +270,15 @@ test('install keeps nested conflicts local to the dependent module', () => {
   );
   const pluginTsconfig = JSON.parse(
     readFileSync(
-      join(modules, 'app', 'modules', 'plugin', 'tsconfig.json'),
+      join(modules, '.cache', 'plugin@1.0.0', 'tsconfig.json'),
       'utf8'
     )
   );
 
   assert.deepEqual(appTsconfig.compilerOptions.paths['#modules/lib'], [
-    '../lib'
+    '../.cache/lib@1.2.0'
   ]);
   assert.deepEqual(pluginTsconfig.compilerOptions.paths['#modules/lib'], [
-    './modules/lib'
+    '../lib@2.0.0'
   ]);
 });
