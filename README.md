@@ -2,7 +2,7 @@
 
 Modular metadata management system built on Node.js and TypeScript.
 
-The application starts an HTTP server, loads enabled modules from
+The application starts an HTTP server, loads enabled root modules from
 `src/modules/*/module.json`, and lets modules register routes through a shared
 runtime context.
 
@@ -81,8 +81,34 @@ docker compose up --build
 
 ## Module System
 
-Modules live under `src/modules`. Each top-level module is discovered from a
-`module.json` file:
+Modules live under `src/modules`.
+
+Editable root modules are installed directly under:
+
+```text
+src/modules/<module>
+```
+
+Cached dependencies are installed under:
+
+```text
+src/modules/.cache/<module>@<version>
+```
+
+The version authority is:
+
+```text
+src/modules/modlock.json
+```
+
+Root modules are listed in `modlock.modules[""].dependencies`. Every concrete
+module version has a flat lockfile key:
+
+```text
+<module>@<version>
+```
+
+Each module is described by a `module.json` file:
 
 ```json
 {
@@ -107,15 +133,15 @@ Fields:
 - `enabled`: only enabled modules with a `main` entry are loaded at runtime.
 - `main`: module entrypoint. Use a `.js` specifier even when the source file is
   TypeScript, for example `src/main.js` for `src/main.ts`.
-- `dependencies`: optional map of module names to versions.
+- `dependencies`: optional map of module names to versions or ranges.
 
 A module entrypoint exports an async `register` function:
 
 ```ts
-import type { Ctx } from '#core/loader';
+import type { Context } from '#core/loader';
 
-export async function register(ctx: Ctx) {
-  ctx.router.on('GET', '/example', async (_req, res) => {
+export async function register(context: Context) {
+  context.router.on('GET', '/example', async (_req, res) => {
     res
       .writeHead(200, {
         'Content-Type': 'application/json'
@@ -132,14 +158,23 @@ The registration context contains:
 - `logger`: application logger.
 - `modules`: loaded module metadata and entrypoints.
 
-Version placement, generated TypeScript aliases, and runtime alias lookup are
-described in [Module Resolution](docs/module-resolution.md).
+Module imports use the `#modules/` prefix:
+
+```ts
+import { wrapper } from '#modules/metadata-http/src/wrapper.js';
+```
+
+Runtime resolution and generated TypeScript path mappings must resolve the same
+module/version for every importer. If a root module provides the exact
+dependency version, root wins. Otherwise the dependency resolves from `.cache`.
+
+Full module documentation starts at [Module System](docs/module-resolution.md).
 
 ## Module CLI
 
 The module CLI is implemented in `scripts/mod.ts`.
 
-Initialize module configuration and regenerate module TypeScript references:
+Initialize module configuration:
 
 ```bash
 node scripts/mod.ts init --repository http://localhost:1337
@@ -151,37 +186,67 @@ If `src/modules/modrc.json` already exists, `--repository` is not required:
 node scripts/mod.ts init
 ```
 
-Build module metadata into `dist/modules`:
+Create a new editable root module:
+
+```bash
+node scripts/mod.ts create <module>
+```
+
+Install root modules from the repository, or install everything from the
+lockfile when no module names are passed:
+
+```bash
+node scripts/mod.ts install <module[@version]>...
+node scripts/mod.ts install
+```
+
+Rebuild the lockfile from root modules and reachable cached dependencies:
+
+```bash
+node scripts/mod.ts tidy
+```
+
+Show root modules whose current files differ from locked integrity:
+
+```bash
+node scripts/mod.ts status
+```
+
+Remove editable root modules and clean unused cache dependencies:
+
+```bash
+node scripts/mod.ts remove <module>...
+```
+
+Publish one root module:
+
+```bash
+node scripts/mod.ts publish <module>
+```
+
+Copy module manifests into the build output:
 
 ```bash
 node scripts/mod.ts build
 ```
 
-Current command status:
-
-| Command   | Status      |
-| --------- | ----------- |
-| `build`   | Implemented |
-| `create`  | Implemented |
-| `init`    | Implemented |
-| `install` | Implemented |
-| `publish` | Implemented |
-| `remove`  | Implemented |
+Command behavior is specified in [Module Commands](docs/mod/cmd/README.md).
 
 ## Generated Files
 
-The `init` command maintains module build metadata:
+Module commands maintain generated metadata:
 
+- `src/modules/modlock.json`: flat module dependency lockfile.
 - `src/modules/modrc.json`: module repository configuration.
-- `src/modules/modlock.json`: generated module dependency lock file.
 - `src/modules/**/tsconfig.json`: generated per-module TypeScript projects.
 - `tsconfig.build.json`: generated build references for the root project and
   modules.
 
-Regenerate these files after adding, removing, or changing module dependencies:
+Regenerate lockfile and TypeScript references after changing module dependencies
+on disk:
 
 ```bash
-node scripts/mod.ts init
+node scripts/mod.ts tidy
 ```
 
 ## Tests
