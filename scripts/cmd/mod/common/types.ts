@@ -4,19 +4,22 @@ export interface ModuleManifest {
   version: string;
   enabled?: boolean;
   main?: string;
-  dependencies?: Record<ModuleManifest['name'], ModuleManifest['version']>;
+  dependencies?: Record<string, string>;
 }
 
-export interface Modlock extends Record<
-  ModuleManifest['name'],
-  {
-    dependencies: Modlock;
-    name: ModuleManifest['name'];
-    version: ModuleManifest['version'];
-  }
-> {}
+export interface Modlock {
+  lockfileVersion: number;
+  modules: Record<
+    string,
+    {
+      dependencies: Record<string, string>;
+      integrity?: string;
+      resolved?: string;
+    }
+  >;
+}
 
-export type ModlockNode = Modlock[ModuleManifest['name']];
+export type ModlockNode = Modlock['modules'][string];
 
 export interface Modrc {
   repository: string;

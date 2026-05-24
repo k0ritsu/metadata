@@ -1,25 +1,51 @@
-import { access } from 'node:fs/promises';
-import type { LoadHook, ResolveHook, ResolveHookContext } from 'node:module';
+import type {
+  InitializeHook,
+  LoadHook,
+  ResolveHook,
+  ResolveHookContext
+} from 'node:module';
 import { extname, isAbsolute, join, relative, sep } from 'node:path';
 import { cwd } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-const JAVASCRIPT_EXTENSION = '.js';
-
-const EXTENSION = extname(import.meta.filename);
+export interface Modlock {
+  lockfileVersion: number;
+  modules: Record<
+    string,
+    {
+      dependencies: Record<string, string>;
+      integrity?: string;
+      resolved?: string;
+    }
+  >;
+}
 
 const NODE_MODULES = join(cwd(), 'node_modules');
 const MODULES = import.meta.dirname;
 
 const MODULES_ALIAS = '#modules/';
 
-export const resolve: ResolveHook = async (specifier, context, nextResolve) => {
+const CACHE = '.cache';
+const ROOT = '';
+
+const EXTENSION = extname(import.meta.filename);
+const JAVASCRIPT_EXTENSION = '.js';
+
+let modules: Modlock['modules'] = {};
+
+export const initialize: InitializeHook<{
+  modlock: Modlock;
+}> = ({ modlock }) => {
+  modules = modlock.modules;
+};
+
+export const resolve: ResolveHook = (specifier, context, nextResolve) => {
   if (isInsidePath(context, NODE_MODULES)) {
     return nextResolve(specifier, context);
   }
 
   if (isInsidePath(context, MODULES)) {
-    specifier = await resolveSpecifier(specifier, context);
+    specifier = resolveModuleSpecifier(specifier, context);
   }
 
   return nextResolve(withRuntimeExtension(specifier), context);
@@ -30,11 +56,12 @@ export const load: LoadHook = (url, context, nextLoad) => {
 };
 
 function isInsidePath(context: ResolveHookContext, path: string) {
-  if (!context.parentURL) {
+  const parentPath = getParentPath(context);
+  if (!parentPath) {
     return false;
   }
 
-  const relativePath = relative(path, fileURLToPath(context.parentURL));
+  const relativePath = relative(path, parentPath);
 
   return (
     relativePath !== '' &&
@@ -43,104 +70,121 @@ function isInsidePath(context: ResolveHookContext, path: string) {
   );
 }
 
-async function resolveSpecifier(
+function resolveModuleSpecifier(
   specifier: string,
   context: ResolveHookContext
 ) {
-  if (specifier.startsWith(MODULES_ALIAS)) {
-    specifier = specifier.slice(MODULES_ALIAS.length);
-  } else {
+  const alias = parseModuleAlias(specifier);
+  if (!alias) {
     return specifier;
   }
 
-  const [dependency, ...paths] = specifier.split('/');
+  const importer = getImporterKey(context, specifier);
+  const version = getDependencyVersion(importer, alias.dependency);
+
+  const module = createModuleKey(alias.dependency, version);
+  assertModlockNode(module);
+
+  const dependencyRoot = resolveDependencyRoot(alias.dependency, version, {
+    module
+  });
+
+  return join(dependencyRoot, alias.path);
+}
+
+function parseModuleAlias(specifier: string) {
+  if (specifier.startsWith(MODULES_ALIAS)) {
+    specifier = specifier.slice(MODULES_ALIAS.length);
+  } else {
+    return;
+  }
+
+  const [dependency, ...pathParts] = specifier.split('/');
   if (!dependency) {
-    throw new Error(`invalid module alias "${MODULES_ALIAS}${specifier}"`);
+    throw new Error(`Invalid module alias "${specifier}"`);
   }
 
-  const candidates = createDependencyCandidates(dependency, context);
-  for (const candidate of candidates) {
-    const resolved = withRuntimeExtension(join(candidate, ...paths));
-    try {
-      await access(resolved);
-
-      return resolved;
-    } catch {
-      continue;
-    }
-  }
-
-  throw new Error(`cannot resolve module alias "${MODULES_ALIAS}${specifier}"`);
+  return {
+    dependency,
+    path: join(...pathParts)
+  };
 }
 
-function createDependencyCandidates(
-  dependency: string,
-  context: ResolveHookContext
-) {
-  const levels = getModuleLevels(context);
-  const candidates: string[] = [];
-
-  for (let depth = levels.length; depth > 0; depth--) {
-    const current = levels.slice(0, depth);
-
-    const [root, ...nested] = current;
-    if (!root) {
-      continue;
-    }
-
-    const modulePath = join(
-      MODULES,
-      root,
-      ...nested.flatMap((module) => ['modules', module])
-    );
-
-    candidates.push(join(modulePath, 'modules', dependency));
+function getImporterKey(context: ResolveHookContext, specifier: string) {
+  const parentPath = getParentPath(context);
+  if (!parentPath) {
+    throw new Error(`cannot resolve "${specifier}" without a file parent URL`);
   }
 
-  candidates.push(join(MODULES, dependency));
-
-  return candidates;
-}
-
-function getModuleLevels(context: ResolveHookContext) {
-  const { parentURL } = context;
-  if (!parentURL) {
-    return [];
-  }
-
-  const parentPath = fileURLToPath(parentURL);
   const relativePath = relative(MODULES, parentPath);
 
-  if (
-    relativePath === '' ||
-    relativePath.startsWith('..') ||
-    isAbsolute(relativePath)
-  ) {
-    return [];
+  const [root, module] = relativePath.split(sep).filter(Boolean);
+  if (!root) {
+    throw new Error(`cannot determine importing module for "${specifier}"`);
   }
 
-  const segments = relativePath.split(sep).filter(Boolean);
-  const [root] = segments;
-
-  if (!root || root.includes('.')) {
-    return [];
-  }
-
-  const levels = [root];
-  let index = 1;
-
-  while (index + 1 < segments.length && segments[index] === 'modules') {
-    const nested = segments[index + 1];
-
-    if (!nested) {
-      break;
+  if (root === CACHE) {
+    if (!module) {
+      throw new Error(`cannot determine dependency module for "${specifier}"`);
     }
 
-    levels.push(nested);
-    index += 2;
+    assertModlockNode(module);
+
+    return module;
   }
 
-  return levels;
+  return createModuleKey(root, getDependencyVersion(ROOT, root));
+}
+
+function getParentPath(context: ResolveHookContext) {
+  const { parentURL } = context;
+  if (parentURL?.startsWith('file:')) {
+    return fileURLToPath(parentURL);
+  }
+
+  return;
+}
+
+function createModuleKey(dependency: string, version: string) {
+  return `${dependency}@${version}`;
+}
+
+function getDependencyVersion(module: string, dependency: string) {
+  const node = assertModlockNode(module);
+
+  const version = node.dependencies[dependency];
+  if (!version) {
+    throw new Error(
+      `${module || 'root module set'} does not depend on ${dependency}`
+    );
+  }
+
+  return version;
+}
+
+function assertModlockNode(module: string) {
+  const node = modules[module];
+  if (!node) {
+    throw new Error(`${module || 'root module set'} is missing`);
+  }
+
+  return node;
+}
+
+function resolveDependencyRoot(
+  dependency: string,
+  version: string,
+  options: {
+    module: string;
+  }
+) {
+  return isRootDependency(dependency, version)
+    ? join(MODULES, dependency)
+    : join(MODULES, CACHE, options.module);
+}
+
+function isRootDependency(dependency: string, version: string) {
+  return modules[ROOT]?.dependencies[dependency] === version;
 }
 
 function withRuntimeExtension(specifier: string): string {
