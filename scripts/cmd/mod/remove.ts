@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { cp, mkdir, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { CACHE, MODULES } from './common/constants.ts';
+import { CACHE, MODULES, ROOT_NODE } from './common/constants.ts';
 import { createModuleKey } from './common/helpers/key.ts';
 import { assertModuleName } from './common/helpers/manifest.ts';
-import { readModlock, ROOT } from './common/helpers/modlock.ts';
+import { readModlock } from './common/helpers/modlock.ts';
 import { exists } from './common/helpers/path.ts';
 import type { CommandHandler } from './common/types.ts';
 import { tidy } from './tidy.ts';
@@ -26,7 +26,7 @@ export const remove: CommandHandler = async (args: string[]) => {
   const modlock = await readModlock();
 
   const names = new Set(positionals);
-  const dependencies = modlock.modules[ROOT]?.dependencies ?? {};
+  const dependencies = modlock.modules[ROOT_NODE]?.dependencies ?? {};
 
   await mkdir(CACHE, {
     recursive: true

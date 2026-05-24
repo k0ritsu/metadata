@@ -1,20 +1,16 @@
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 import { glob, rm, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
-import { MODULE, MODULES } from '../constants.ts';
-import type { ModuleManifest } from '../types.ts';
-import { readModuleManifest } from './manifest.ts';
-import {
-  createDependencyCandidates,
-  type ResolvedModule
-} from './resolution.ts';
+import { CACHE, MODULES, ROOT_NODE } from '../constants.ts';
+import type { Modlock } from '../types.ts';
+import { createModuleKey } from './key.ts';
+import { readModlock, resolveModuleRoot } from './modlock.ts';
 
 interface ModuleRoot {
-  name: ModuleManifest['name'];
   root: string;
 }
 
-const TSCONFIG_PROJECT = 'tsconfig.json';
+export const TSCONFIG_PROJECT = 'tsconfig.json';
 
 const TSCONFIG_BASE = resolve('tsconfig.base.json');
 const TSCONFIG_BUILD = resolve('tsconfig.build.json');
@@ -28,48 +24,54 @@ const CORE_ALIASES = {
 };
 
 export async function createTsconfigs(toUpdate?: ModuleRoot[]) {
-  const modules = await loadModules();
+  const modlock = await readModlock();
+  const modules = Object.keys(modlock.modules).filter(
+    (key) => key !== ROOT_NODE
+  );
+
+  if (toUpdate) {
+    const roots = new Set(toUpdate.map((module) => resolve(module.root)));
+
+    await Promise.all(
+      modules
+        .filter((key) => roots.has(resolveModuleRoot(modlock, key)))
+        .map((key) => {
+          return writeFile(
+            resolve(resolveModuleRoot(modlock, key), TSCONFIG_PROJECT),
+            JSON.stringify(createModuleTsconfig(modlock, key), undefined, 2)
+          );
+        })
+    );
+  } else {
+    await Promise.all(
+      modules.map((key) => {
+        return writeFile(
+          resolve(resolveModuleRoot(modlock, key), TSCONFIG_PROJECT),
+          JSON.stringify(createModuleTsconfig(modlock, key), undefined, 2)
+        );
+      })
+    );
+  }
+
   await Promise.all([
-    ...getUpdatedModules(modules, toUpdate).map((mod) => {
-      return writeFile(
-        resolve(mod.root, TSCONFIG_PROJECT),
-        JSON.stringify(createModuleTsconfig(mod, modules), undefined, 2)
-      );
-    }),
     writeFile(
       TSCONFIG_BUILD,
-      JSON.stringify(createBuildTsconfig(modules), undefined, 2)
+      JSON.stringify(createBuildTsconfig(modlock, modules), undefined, 2)
     ),
-    removeStaleModuleTsconfigs(modules)
+    removeStaleModuleTsconfigs(modlock, modules)
   ]);
 }
 
-async function loadModules() {
-  const modules: ResolvedModule[] = [];
+function createModuleTsconfig(modlock: Modlock, key: string) {
+  const root = resolveModuleRoot(modlock, key);
 
-  for await (const path of glob(resolve(MODULES, '**', MODULE))) {
-    const mod = await readModuleManifest(path, {
-      validateDependencyRanges: true
-    });
+  const node = modlock.modules[key];
+  assert(node, `${key}: module is missing from modlock`);
 
-    const root = dirname(path);
-    modules.push({
-      name: mod.name,
-      root,
-      dependencies: mod.dependencies ?? {},
-      version: mod.version
-    });
-  }
-
-  return modules.sort((left, right) => left.root.localeCompare(right.root));
-}
-
-function createModuleTsconfig(mod: ResolvedModule, modules: ResolvedModule[]) {
-  const modulesByRoot = new Map(modules.map((module) => [module.root, module]));
   const paths = Object.fromEntries(
     Object.entries(CORE_ALIASES).map(([alias, path]) => [
       alias,
-      [toTsconfigPath(mod.root, path)]
+      [toTsconfigPath(root, path)]
     ])
   );
 
@@ -82,73 +84,42 @@ function createModuleTsconfig(mod: ResolvedModule, modules: ResolvedModule[]) {
     [
       TSCONFIG,
       {
-        path: toTsconfigPath(mod.root, TSCONFIG)
+        path: toTsconfigPath(root, TSCONFIG)
       }
     ]
   ]);
 
-  for (const dependencyName of Object.keys(mod.dependencies)) {
-    const dependency = resolveFilesystemDependency(
-      mod,
-      dependencyName,
-      modulesByRoot
-    );
-    const dependencyRoots = [dependency.root];
+  for (const [dependency, version] of Object.entries(node.dependencies)) {
+    const dependencyKey = createModuleKey(dependency, version);
+    const dependencyRoot = resolveModuleRoot(modlock, dependencyKey);
+    const dependencyPath = toTsconfigPath(root, dependencyRoot);
 
-    const dependencyPaths = dependencyRoots.map((root) =>
-      toTsconfigPath(mod.root, root)
-    );
-
-    paths[`#modules/${dependencyName}`] = dependencyPaths;
-    paths[`#modules/${dependencyName}/*`] = dependencyPaths.map((path) => {
-      return `${path}/*`;
+    paths[`#modules/${dependency}`] = [dependencyPath];
+    paths[`#modules/${dependency}/*`] = [`${dependencyPath}/*`];
+    references.set(dependencyRoot, {
+      path: toTsconfigPath(root, resolve(dependencyRoot, TSCONFIG_PROJECT))
     });
-
-    for (const root of dependencyRoots) {
-      references.set(root, {
-        path: toTsconfigProjectPath(mod.root, root)
-      });
-    }
   }
 
   const dist = resolve('dist', 'modules');
 
   return {
     compilerOptions: {
-      outDir: toTsconfigPath(
-        mod.root,
-        resolve(dist, relative(MODULES, mod.root))
-      ),
+      outDir: toTsconfigPath(root, resolve(dist, relative(MODULES, root))),
       paths,
       rootDir: '.',
       tsBuildInfoFile: toTsconfigPath(
-        mod.root,
-        resolve(dist, relative(MODULES, mod.root), 'tsconfig.tsbuildinfo')
+        root,
+        resolve(dist, relative(MODULES, root), 'tsconfig.tsbuildinfo')
       )
     },
-    exclude: ['modules/**'],
-    extends: toTsconfigPath(mod.root, TSCONFIG_BASE),
+    extends: toTsconfigPath(root, TSCONFIG_BASE),
     include: ['src/**/*.ts'],
     references: Array.from(references.values())
   };
 }
 
-function resolveFilesystemDependency(
-  mod: ResolvedModule,
-  dependencyName: string,
-  modulesByRoot: Map<string, ResolvedModule>
-) {
-  for (const root of createDependencyCandidates(mod.root, dependencyName)) {
-    const dependency = modulesByRoot.get(root);
-    if (dependency) {
-      return dependency;
-    }
-  }
-
-  assert.fail(`${mod.name}: dependency ${dependencyName} is not installed`);
-}
-
-function createBuildTsconfig(modules: ResolvedModule[]) {
+function createBuildTsconfig(modlock: Modlock, modules: string[]) {
   const root = resolve('.');
 
   return {
@@ -157,32 +128,14 @@ function createBuildTsconfig(modules: ResolvedModule[]) {
       {
         path: toTsconfigPath(root, TSCONFIG)
       },
-      ...modules.map((mod) => ({
-        path: toTsconfigProjectPath(root, mod.root)
+      ...modules.map((key) => ({
+        path: toTsconfigPath(
+          root,
+          resolve(resolveModuleRoot(modlock, key), TSCONFIG_PROJECT)
+        )
       }))
     ]
   };
-}
-
-function getUpdatedModules(modules: ResolvedModule[], roots?: ModuleRoot[]) {
-  if (!roots) {
-    return modules;
-  }
-
-  const dict = new Map(modules.map((mod) => [mod.root, mod]));
-
-  return roots.map((root) => {
-    const key = resolve(root.root);
-    const mod = dict.get(key);
-
-    assert(mod, `${root.name}: module is not found`);
-
-    return mod;
-  });
-}
-
-function toTsconfigProjectPath(from: string, root: string) {
-  return toTsconfigPath(from, resolve(root, TSCONFIG_PROJECT));
 }
 
 function toTsconfigPath(from: string, to: string) {
@@ -198,11 +151,20 @@ function toTsconfigPath(from: string, to: string) {
   return `./${path}`;
 }
 
-async function removeStaleModuleTsconfigs(modules: ResolvedModule[]) {
-  const root = new Set(modules.map((mod) => mod.root));
-  for await (const path of glob(resolve(MODULES, '**', TSCONFIG_PROJECT))) {
-    if (!root.has(dirname(path))) {
-      await rm(path);
+async function removeStaleModuleTsconfigs(modlock: Modlock, modules: string[]) {
+  const roots = new Set(modules.map((key) => resolveModuleRoot(modlock, key)));
+  const stale: Promise<void>[] = [];
+
+  for (const pattern of [
+    resolve(MODULES, '*', TSCONFIG_PROJECT),
+    resolve(CACHE, '*', TSCONFIG_PROJECT)
+  ]) {
+    for await (const path of glob(pattern)) {
+      if (!roots.has(dirname(path))) {
+        stale.push(rm(path));
+      }
     }
   }
+
+  await Promise.all(stale);
 }

@@ -6,6 +6,8 @@ import { init } from './cmd/mod/init.ts';
 import { install } from './cmd/mod/install.ts';
 import { publish } from './cmd/mod/publish.ts';
 import { remove } from './cmd/mod/remove.ts';
+import { status } from './cmd/mod/status.ts';
+import { tidy } from './cmd/mod/tidy.ts';
 
 const [command, ...args] = process.argv.slice(2);
 switch (command) {
@@ -26,6 +28,12 @@ switch (command) {
     break;
   case 'remove':
     await remove(args);
+    break;
+  case 'status':
+    await status(args);
+    break;
+  case 'tidy':
+    await tidy(args);
     break;
   default:
     throw new Error('unknown');

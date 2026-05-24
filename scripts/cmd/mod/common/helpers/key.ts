@@ -1,5 +1,5 @@
-export function createModuleKey(name: string, version: string) {
-  return `${name}@${version}`;
+export function createModuleKey(dependency: string, version: string) {
+  return `${dependency}@${version}`;
 }
 
 export function parseModuleKey(key: string) {
@@ -9,7 +9,7 @@ export function parseModuleKey(key: string) {
   }
 
   return {
-    name: key.slice(0, index),
+    dependency: key.slice(0, index),
     version: key.slice(index + 1)
   };
 }

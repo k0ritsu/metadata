@@ -61,8 +61,7 @@ export const create: CommandHandler = async (args: string[]) => {
 
   await createTsconfigs([
     {
-      root,
-      name
+      root
     }
   ]);
 };
