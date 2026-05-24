@@ -1,386 +1,371 @@
 # Module Resolution
 
-This document describes how module versions are resolved, how modules are placed
-on disk, how TypeScript configs are generated, and how the runtime loader
-resolves module imports.
+This document describes the target module model: how modules are placed on disk,
+how `modlock.json` is built, how TypeScript configs are generated, how the
+runtime loader resolves imports, and what each module command is responsible
+for.
 
 ## Core Model
 
 Modules live under `src/modules`.
 
-Top-level modules are installed at:
+Root modules are editable modules installed directly under `src/modules`:
 
 ```text
 src/modules/<module>
 ```
 
-Nested dependencies are installed under the consuming module:
+Cached dependencies are immutable installed module versions:
 
 ```text
-src/modules/<consumer>/modules/<dependency>
-src/modules/<consumer>/modules/<nested>/modules/<dependency>
+src/modules/.cache/<module>@<version>
 ```
 
-The physical directory tree is the source of truth for TypeScript and runtime
-resolution. Version selection is handled by install/init logic, not by
-TypeScript config generation or the runtime loader.
+The root set is the list of modules the project owns directly. Cached modules
+exist only because at least one root module, or one of its dependencies, needs
+that exact version.
 
-## Version Resolution in Commands
-
-### Shared Terms
-
-Dependency versions are declared in `module.json`:
+The lock file is flat. It does not mirror the filesystem as nested directories:
 
 ```json
 {
-  "dependencies": {
-    "metadata-http": "^1.0.0"
-  }
-}
-```
-
-The value is a semver range. A concrete installed module version satisfies a
-dependency when:
-
-```text
-semver.satisfies(installed.version, declaredRange)
-```
-
-A conflict occurs when the first visible installed module with the requested
-name does not satisfy the declared range.
-
-### Candidate Order
-
-For a consumer at:
-
-```text
-src/modules/app/modules/plugin
-```
-
-and dependency `lib`, the candidate order is:
-
-```text
-src/modules/app/modules/plugin/modules/lib
-src/modules/app/modules/lib
-src/modules/lib
-```
-
-For a top-level consumer at:
-
-```text
-src/modules/app
-```
-
-the candidate order is:
-
-```text
-src/modules/app/modules/lib
-src/modules/lib
-```
-
-This order is used by command-side validation, TypeScript config generation, and
-the runtime loader. The difference is what each subsystem does with the
-candidates.
-
-### `mod install <module[@version]>`
-
-Directly requested modules are installed at the top level:
-
-```text
-src/modules/<module>
-```
-
-Their dependencies are then resolved recursively.
-
-For each dependency:
-
-1. Build the filesystem candidate list for the current consumer.
-2. Scan candidates from nearest to root.
-3. If no candidate exists yet, install the resolved dependency version at the
-   root-level candidate when no conflict has been encountered.
-4. If a candidate exists and its version satisfies the requested range, reuse
-   it.
-5. If a candidate exists and its version does not satisfy the requested range,
-   install the dependency in the current consumer's local `modules` directory.
-6. Recurse into the dependency's own dependencies.
-
-Example:
-
-```text
-app -> lib@^1
-tool -> lib@^2
-```
-
-If `app` is processed first, `lib@1.x` can be installed at:
-
-```text
-src/modules/lib
-```
-
-When `tool` asks for `lib@^2`, the root `lib@1.x` conflicts, so `lib@2.x` is
-installed at:
-
-```text
-src/modules/tool/modules/lib
-```
-
-Nested conflicts stay local to the nested consumer. If:
-
-```text
-app -> lib@^1
-app -> plugin@^1
-plugin -> lib@^2
-```
-
-then `plugin` must not place `lib@2.x` in `app/modules/lib`, because that would
-shadow `app`'s own dependency lookup. The conflicting version belongs at:
-
-```text
-src/modules/app/modules/plugin/modules/lib
-```
-
-### `mod install` Without Arguments
-
-When called without module specs, `mod install` reads `src/modules/modlock.json`
-and installs the locked tree.
-
-The lock tree mirrors the intended filesystem layout:
-
-```json
-{
-  "app": {
-    "dependencies": {
-      "plugin": {
-        "dependencies": {},
-        "name": "plugin",
-        "version": "1.0.0"
+  "lockfileVersion": 1,
+  "modules": {
+    "": {
+      "dependencies": {
+        "ping": "1.0.0"
       }
     },
-    "name": "app",
-    "version": "1.0.0"
-  }
-}
-```
-
-Top-level keys are placed under `src/modules`. Nested `dependencies` are placed
-under the owning module's `modules` directory unless a visible compatible
-version already satisfies that locked dependency.
-
-### `mod init`
-
-`mod init` does not download modules. It reads the current filesystem tree and
-regenerates:
-
-- `src/modules/modlock.json`
-- `src/modules/modrc.json`
-- per-module `tsconfig.json` files
-- `tsconfig.build.json`
-
-For lock generation, `init` validates dependency ranges against the filesystem
-layout:
-
-1. Load every `module.json` under `src/modules/**`.
-2. Treat only direct children of `src/modules` as lock roots.
-3. For each dependency edge, scan candidates from nearest to root.
-4. The first existing candidate with that name must satisfy the declared semver
-   range.
-5. If no candidate is found, fail.
-6. If the first candidate is incompatible, fail.
-7. If a dependency cycle is detected, fail.
-
-This makes `init` the consistency check for manually edited module trees.
-
-### `mod remove`
-
-`mod remove <module>` removes only top-level modules.
-
-After removal it rebuilds the remaining lock tree and synchronizes the
-filesystem:
-
-1. Remove the requested root nodes from the lock.
-2. Collect dependency versions still required by remaining root modules.
-3. Hoist a dependency to `src/modules/<dependency>` only when exactly one
-   version of that dependency remains and no root module already occupies that
-   name.
-4. Move existing matching module directories where possible instead of
-   re-downloading.
-5. Remove stale directories that are no longer represented by the next lock.
-6. Regenerate TypeScript configs.
-
-### `mod create`
-
-`mod create <name>` creates a new top-level module:
-
-```text
-src/modules/<name>/module.json
-```
-
-It creates a minimal manifest and regenerates TypeScript config for that module.
-It does not resolve or install dependencies.
-
-### `mod build`
-
-`mod build` copies module manifests into `dist/modules` and rewrites TypeScript
-`main` entries to JavaScript entries when needed.
-
-It does not resolve versions and does not change dependency placement.
-
-### `mod publish`
-
-`mod publish [module]` packages one module and uploads it to the configured
-repository.
-
-Published archives exclude:
-
-- nested `modules` directories
-- generated module `tsconfig.json`
-
-Dependencies are published as manifest ranges, not as vendored module
-directories.
-
-## TypeScript Config Generation
-
-Each installed module gets its own generated `tsconfig.json`.
-
-The generator creates:
-
-- core aliases such as `#core/loader`
-- module aliases such as `#modules/<dependency>`
-- TypeScript project references to resolved dependencies
-- output paths under `dist/modules`
-
-TypeScript dependency resolution follows the filesystem, not semver.
-
-For each declared dependency in a module's `module.json`:
-
-1. Build the same candidate list used by the loader.
-2. Pick the first candidate directory that exists and contains a module.
-3. Generate `paths` for that physical directory.
-4. Add a project reference to that module's generated `tsconfig.json`.
-5. If no candidate exists, fail.
-
-The generator does not search for a better semver-compatible version. If the
-nearest physical module has the wrong version, that is an invalid installation
-layout and must be caught by `install` or `init`.
-
-Example for:
-
-```text
-src/modules/app/modules/plugin
-```
-
-with dependency `lib`, if this exists:
-
-```text
-src/modules/app/modules/plugin/modules/lib
-```
-
-then `plugin/tsconfig.json` maps:
-
-```json
-{
-  "compilerOptions": {
-    "paths": {
-      "#modules/lib": ["./modules/lib"],
-      "#modules/lib/*": ["./modules/lib/*"]
+    "ping@1.0.0": {
+      "dependencies": {
+        "metadata-http": "0.1.0"
+      },
+      "integrity": "sha512-...",
+      "resolved": "https://repo/modules/ping/versions/1.0.0/archive"
+    },
+    "metadata-http@0.1.0": {
+      "dependencies": {},
+      "integrity": "sha512-...",
+      "resolved": "https://repo/modules/metadata-http/versions/0.1.0/archive"
     }
   }
 }
 ```
 
-If the local dependency does not exist but this does:
+The empty module key `""` is the root module set. Every other key uses:
 
 ```text
-src/modules/app/modules/lib
+<module>@<version>
 ```
 
-then the generated path points to the parent dependency instead.
+## Resolution Rule
+
+Resolution starts from root modules.
+
+1. Root modules are read from `src/modules/<module>`.
+2. Their dependencies are resolved recursively.
+3. A dependency is placed in `.cache` unless the same module and version already
+   exists in the root set.
+4. If the same module exists in the root set but with a different version, that
+   root module must not satisfy the dependency. The required version is resolved
+   from `.cache`.
+
+Example:
+
+```text
+root:
+  a@1.0.0
+  app@1.0.0
+
+app@1.0.0:
+  a@2.0.0
+```
+
+Runtime and TypeScript resolution for `app` must use:
+
+```text
+src/modules/.cache/a@2.0.0
+```
+
+not:
+
+```text
+src/modules/a
+```
+
+Root modules are preferred only on exact module name and version match.
 
 ## Runtime Loader
 
-The runtime loader is registered from `src/modules/import.ts`.
+The runtime loader is registered by `src/modules/import.ts`.
 
-It handles imports with the module alias prefix:
+`import.ts`:
+
+1. reads `src/modules/modlock.json`;
+2. checks `lockfileVersion`;
+3. passes the parsed lock file to `src/modules/loader.ts`.
+
+The loader handles aliases with the `#modules/` prefix:
 
 ```ts
 import { wrapper } from '#modules/metadata-http/src/wrapper.js';
 ```
 
-The loader does not resolve versions. It only repeats the filesystem lookup that
-TypeScript config generation used.
+For every module alias import, the loader:
 
-For an importer at:
+1. determines the importing module from `parentURL`;
+2. resolves that importer to a module key;
+3. reads the requested dependency version from `modlock.modules[importerKey]`;
+4. builds the dependency key `<dependency>@<version>`;
+5. chooses the physical root:
+   - `src/modules/<dependency>` if the root set contains that same version;
+   - otherwise `src/modules/.cache/<dependency>@<version>`;
+6. appends the imported path.
 
-```text
-src/modules/app/modules/plugin/src/main.ts
-```
-
-and specifier:
-
-```text
-#modules/lib/src/value.js
-```
-
-the loader checks:
+For importers inside `.cache`, the importer key is taken from the cache
+directory name:
 
 ```text
-src/modules/app/modules/plugin/modules/lib/src/value.ts
-src/modules/app/modules/lib/src/value.ts
-src/modules/lib/src/value.ts
+src/modules/.cache/metadata-http@0.1.0/src/wrapper.ts
 ```
 
-The first existing file wins.
+uses importer key:
+
+```text
+metadata-http@0.1.0
+```
 
 The loader also rewrites runtime `.js` specifiers to the current runtime
-extension. In development this allows source files to import `.js` specifiers
-while Node executes `.ts` files. In production the same imports resolve to
-compiled `.js` files.
+extension. In development this lets TypeScript source files import `.js`
+specifiers while Node executes `.ts` files. In production the same imports
+resolve to compiled `.js` files.
 
-The loader only applies module alias resolution for importers inside
-`src/modules`. Imports outside `src/modules` are passed to Node's normal
-resolver.
+The loader does not choose semver versions and does not verify installed files.
+It follows `modlock.json`. Missing files should fail through Node's normal
+module resolution errors.
 
-## How the Pieces Fit Together
+## TypeScript Config Generation
 
-The module system has one version authority and two filesystem consumers.
+TypeScript config generation must fully match runtime loader resolution.
 
-Version authority:
+For each reachable module key in `modlock.modules`, excluding the root key `""`,
+the generated module `tsconfig.json` must:
 
-- `mod install` chooses concrete versions and places dependencies on disk.
-- `mod init` validates the current filesystem layout and writes the lock file.
+- include core aliases such as `#core/loader`, `#core/router`, `#core/store`;
+- include `#modules/<dependency>` aliases for that module's locked dependencies;
+- point each dependency alias at the exact physical directory the runtime loader
+  would choose;
+- include project references to those dependency module configs;
+- write build output under the matching `dist/modules/...` directory.
 
-Filesystem consumers:
+If runtime would resolve:
 
-- TypeScript config generation maps aliases to the first visible dependency
-  directory.
-- The runtime loader resolves aliases to the first visible dependency file.
+```text
+#modules/metadata-http
+```
+
+from:
+
+```text
+src/modules/ping
+```
+
+to:
+
+```text
+src/modules/.cache/metadata-http@0.1.0
+```
+
+then `src/modules/ping/tsconfig.json` must map:
+
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "#modules/metadata-http": ["../.cache/metadata-http@0.1.0"],
+      "#modules/metadata-http/*": ["../.cache/metadata-http@0.1.0/*"]
+    }
+  }
+}
+```
 
 The required invariant is:
 
 ```text
-install/init layout == generated tsconfig paths == runtime loader lookup
+modlock resolution == generated tsconfig paths == runtime loader resolution
 ```
 
-If this invariant holds:
+## Commands
 
-- TypeScript compiles against the same dependency copy that runtime will load.
-- Runtime does not need to know semver policy.
-- Version conflicts are expressed only through the filesystem tree.
-- The lock file documents the tree that commands should recreate.
+### `mod build`
 
-If the invariant is broken:
+Copies every reachable module's `module.json` into the corresponding build
+directory under `dist/modules`.
 
-- `mod init` should fail when dependency ranges do not match the physical tree.
-- TypeScript generation may fail when a declared dependency is missing.
-- The runtime loader may fail when no matching file exists for an alias import.
+Examples:
+
+```text
+src/modules/ping/module.json
+-> dist/modules/ping/module.json
+
+src/modules/.cache/metadata-http@0.1.0/module.json
+-> dist/modules/.cache/metadata-http@0.1.0/module.json
+```
+
+`build` does not resolve versions and does not modify `modlock.json`.
+
+### `mod create <name>`
+
+Creates a new empty root module:
+
+```text
+src/modules/<name>/module.json
+```
+
+It also adds the module to the root set in `modlock.json`.
+
+`create` does not install dependencies.
+
+### `mod init [--repository <url>]`
+
+Initializes module configuration.
+
+It:
+
+1. creates `src/modules/modrc.json` if it does not exist;
+2. creates `src/modules/modlock.json` if it does not exist;
+3. rewrites `modrc.json` with the passed repository URL when `--repository` is
+   provided.
+
+`init` should not download modules. It should not replace `tidy` as the command
+that recalculates dependency resolution.
+
+### `mod install [module[@version] ...]`
+
+With no module arguments, installs every module from `modlock.json`.
+
+It:
+
+1. reads each locked module's `resolved` URL;
+2. downloads the archive;
+3. verifies `integrity`;
+4. places root modules under `src/modules/<module>`;
+5. places cached dependencies under `src/modules/.cache/<module>@<version>`.
+
+With one or more module arguments, installs those modules as root modules.
+
+It:
+
+1. resolves each requested module from the configured module repository;
+2. downloads the archive;
+3. computes `integrity`;
+4. records `resolved` and `integrity` in `modlock.json`;
+5. installs the module under `src/modules/<module>`;
+6. installs dependencies into `.cache` unless the same module and version is
+   already present in the root set.
+
+If the requested module is already installed in `.cache`, `install` promotes it
+to the root level:
+
+```text
+src/modules/.cache/<module>@<version>
+```
+
+becomes:
+
+```text
+src/modules/<module>
+```
+
+The lock file root set must be updated accordingly.
+
+### `mod remove <module...>`
+
+Requires one or more module names. It removes only root modules.
+
+For each requested root module:
+
+1. remove it from `src/modules/<module>`;
+2. remove it from `modlock.modules[""].dependencies`;
+3. if another remaining module still depends on the same module and version,
+   move it into `.cache` instead of deleting it;
+4. delete dependencies that are no longer reachable from any root module;
+5. regenerate `modlock.json`;
+6. regenerate TypeScript configs.
+
+`remove` must not remove a module from `.cache` directly by name. Cache contents
+are derived from root modules and their reachable dependencies.
+
+### `mod status`
+
+Checks installed modules against the `integrity` values recorded in
+`modlock.json`.
+
+It:
+
+1. reads every reachable locked module except the root key `""`;
+2. resolves each module to the same physical directory the runtime loader would
+   use;
+3. computes the current module integrity from files on disk;
+4. ignores generated files such as `tsconfig.json`;
+5. prints modules whose current integrity differs from the lock;
+6. prints modules that are missing an `integrity` value;
+7. prints modules that are present in the lock but missing from disk.
+
+`status` does not modify files and does not update `modlock.json`.
+
+Local edits to a root module should show up as an integrity difference until the
+module is published and the lock is updated with the new artifact integrity.
+
+### `mod publish [module]`
+
+Packages one module and uploads it to the configured repository.
+
+Published archives include the module's source and `module.json`, but exclude
+generated files such as:
+
+```text
+tsconfig.json
+```
+
+After publish, the module's `resolved` and `integrity` values in `modlock.json`
+must be updated to match the published artifact.
+
+Local edits do not automatically change `integrity`. `integrity` describes the
+installed or published artifact, not the current working tree state.
+
+### `mod tidy`
+
+Rebuilds `modlock.json` from module files on disk.
+
+It:
+
+1. reads root modules from `src/modules/<module>/module.json`;
+2. writes those modules into `modlock.modules[""].dependencies`;
+3. recursively reads each module's dependencies;
+4. resolves dependencies to root modules when the root has the same module and
+   version;
+5. otherwise resolves dependencies from `src/modules/.cache/<module>@<version>`;
+6. writes only reachable modules into `modlock.modules`;
+7. preserves existing `resolved` and `integrity` values for module keys already
+   present in the previous lock file;
+8. removes unused cached modules from the lock file;
+9. regenerates per-module `tsconfig.json` files;
+10. regenerates `tsconfig.build.json`.
+
+`tidy` should not scan all cached modules eagerly. It should start from root
+modules and read cached modules only when a reachable dependency needs them.
 
 ## Practical Rules
 
-- Use `mod install` to add modules and dependencies when possible.
-- Run `mod init` after manually editing module manifests or moving module
-  directories.
-- Do not manually place a conflicting dependency in a parent module's `modules`
-  directory if that dependency belongs to a nested module.
-- Do not rely on TypeScript or the runtime loader to choose semver-compatible
-  versions. They intentionally follow the filesystem only.
-- Published module archives must not contain installed dependency directories.
+- Root modules are editable.
+- Cached modules are installed artifacts.
+- `modlock.json` is the version authority.
+- Runtime loader and generated TypeScript configs must resolve modules the same
+  way.
+- Do not place dependencies in nested `modules/` directories.
+- Do not let a root module satisfy a dependency unless both name and version
+  match.
+- Use `mod tidy` after editing module manifests or moving modules by hand.
+- Use `mod status` to check which installed modules differ from their locked
+  artifact integrity.
