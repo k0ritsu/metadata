@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { readdir, readFile, stat } from 'node:fs/promises';
-import { relative, resolve } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { MODULE, MODULES, ROOT_NODE } from './common/constants.ts';
+import { collectModuleFiles } from './common/helpers/files.ts';
 import { createModuleIntegrity } from './common/helpers/integrity.ts';
 import { createModuleKey } from './common/helpers/key.ts';
 import {
@@ -10,7 +11,6 @@ import {
   readModuleManifest
 } from './common/helpers/manifest.ts';
 import { readModlock, writeModlock } from './common/helpers/modlock.ts';
-import { normalizePath } from './common/helpers/path.ts';
 import { isRecord } from './common/helpers/record.ts';
 import {
   createRepositoryError,
@@ -111,7 +111,7 @@ async function updatePublishedLockfile(
 }
 
 async function createPublishArchive(root: string) {
-  const files = await collectPublishFiles(root);
+  const files = await collectModuleFiles(root);
   assert(files.includes(MODULE), `${resolve(root, MODULE)}: ${MODULE} missing`);
 
   const entries = await Promise.all(
@@ -131,45 +131,6 @@ async function createPublishArchive(root: string) {
   );
 
   return createGzipTarArchive(entries);
-}
-
-async function collectPublishFiles(root: string) {
-  const files: string[] = [];
-
-  async function visit(directory: string) {
-    const entries = await readdir(directory, {
-      withFileTypes: true
-    });
-
-    for (const entry of entries) {
-      const absolute = resolve(directory, entry.name);
-      const path = normalizePath(relative(root, absolute));
-
-      if (isExcludedPublishPath(path, entry.isDirectory())) {
-        continue;
-      }
-
-      if (entry.isDirectory()) {
-        await visit(absolute);
-        continue;
-      }
-
-      if (entry.isFile()) {
-        files.push(path);
-      }
-    }
-  }
-
-  await visit(root);
-
-  return files.sort((left, right) => left.localeCompare(right));
-}
-
-function isExcludedPublishPath(path: string, isDirectory: boolean) {
-  const segments = path.split('/');
-  const name = segments.at(-1) ?? '';
-
-  return (isDirectory && name === 'modules') || name === 'tsconfig.json';
 }
 
 async function postPublish(repository: string, name: string, archive: Buffer) {

@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { glob, rm, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
-import { CACHE, MODULES, ROOT_NODE } from '../constants.ts';
+import {
+  CACHE,
+  MODULES,
+  MODULES_ALIAS,
+  ROOT_NODE,
+  TSCONFIG_PROJECT
+} from '../constants.ts';
 import type { Modlock } from '../types.ts';
 import { createModuleKey } from './key.ts';
 import { readModlock, resolveModuleRoot } from './modlock.ts';
@@ -9,8 +15,6 @@ import { readModlock, resolveModuleRoot } from './modlock.ts';
 interface ModuleRoot {
   root: string;
 }
-
-export const TSCONFIG_PROJECT = 'tsconfig.json';
 
 const TSCONFIG_BASE = resolve('tsconfig.base.json');
 const TSCONFIG_BUILD = resolve('tsconfig.build.json');
@@ -94,8 +98,8 @@ function createModuleTsconfig(modlock: Modlock, key: string) {
     const dependencyRoot = resolveModuleRoot(modlock, dependencyKey);
     const dependencyPath = toTsconfigPath(root, dependencyRoot);
 
-    paths[`#modules/${dependency}`] = [dependencyPath];
-    paths[`#modules/${dependency}/*`] = [`${dependencyPath}/*`];
+    paths[`${MODULES_ALIAS}${dependency}`] = [dependencyPath];
+    paths[`${MODULES_ALIAS}${dependency}/*`] = [`${dependencyPath}/*`];
     references.set(dependencyRoot, {
       path: toTsconfigPath(root, resolve(dependencyRoot, TSCONFIG_PROJECT))
     });

@@ -11,3 +11,5 @@ export const CACHE = join(MODULES, '.cache');
 
 export const MODULES_ALIAS = '#modules/';
 export const ROOT_NODE = '';
+
+export const TSCONFIG_PROJECT = 'tsconfig.json';
