@@ -16,16 +16,24 @@ interface Config {
 }
 
 export function gracefulShutdown(
-  shutdown: Shutdown,
+  shutdown?: Shutdown,
   config: Config = {
     timeout: DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT
   }
 ) {
   const { timeout } = config;
 
-  async function listener(signal: NodeJS.Signals) {
+  let isShuttingDown = false;
+
+  async function listener() {
+    if (isShuttingDown || typeof shutdown !== 'function') {
+      return;
+    }
+
+    isShuttingDown = true;
+
     await Promise.race([
-      shutdown(),
+      shutdown?.(),
       new Promise<void>((_, reject) => {
         setTimeout(() => {
           reject(new GracefulShutdownTimeout(timeout));
@@ -33,9 +41,9 @@ export function gracefulShutdown(
       })
     ]);
 
-    process.kill(process.pid, signal);
+    process.exit(0);
   }
 
-  process.once('SIGINT', listener);
-  process.once('SIGTERM', listener);
+  process.on('SIGINT', listener);
+  process.on('SIGTERM', listener);
 }

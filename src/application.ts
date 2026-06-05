@@ -62,7 +62,7 @@ export async function bootstrap(config: Config) {
 
     await Promise.all([
       resolver.promise,
-      ...hooks.map(({ shutdown }) => shutdown?.())
+      ...hooks.map(({ shutdown } = {}) => shutdown?.())
     ]);
   };
 }
