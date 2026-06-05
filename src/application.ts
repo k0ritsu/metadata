@@ -1,4 +1,5 @@
-import { v7 } from 'uuid';
+// @ts-expect-error Added in Node.js, pending @types/node support (expected in 24.16)
+import { randomUUIDv7 } from 'node:crypto';
 import type { Config } from './config/types.js';
 import { loadModules } from './loader/loader.js';
 import { createJsonHandler, createLogger } from './logger/logger.js';
@@ -20,7 +21,7 @@ export async function bootstrap(config: Config) {
     (req, res, ctx, done) => {
       let requestId = req.headers['x-request-id'];
       if (typeof requestId !== 'string') {
-        requestId = v7();
+        requestId = randomUUIDv7();
       }
 
       return store.run(
