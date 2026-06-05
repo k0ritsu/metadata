@@ -22,12 +22,12 @@
   },
   "dependencies": {
     "@sinclair/typebox": "0.34.49",
-    "find-my-way": "9.5.0",
-    "semver": "7.8.0",
+    "find-my-way": "9.6.0",
+    "semver": "7.8.2",
     "uuid": "14.0.0"
   },
   "devDependencies": {
-    "@types/node": "24.12.4",
+    "@types/node": "24.13.0",
     "@types/semver": "7.7.1",
     "typescript": "6.0.3"
   }
