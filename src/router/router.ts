@@ -30,7 +30,7 @@ interface HttpHandler {
 export function createRouter(config: Config, logger: Logger) {
   const router = Router({
     defaultRoute(req, res) {
-      const err = new NotFound(undefined, req.url);
+      const err = new NotFound(undefined, undefined, req.url);
 
       return res
         .writeHead(err.status, {
@@ -80,7 +80,7 @@ export function createRouter(config: Config, logger: Logger) {
           logger.error(String(err));
 
           {
-            const err = new InternalServerError(undefined, req.url);
+            const err = new InternalServerError(undefined, undefined, req.url);
 
             return res
               .writeHead(err.status, {
