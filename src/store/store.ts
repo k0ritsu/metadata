@@ -5,7 +5,7 @@ export function createStore() {
 
   return {
     run: als.run.bind(als),
-    set: <T = unknown>(key: string, value: T) => {
+    set<T = unknown>(key: string, value: T) {
       const store = als.getStore();
       if (!store) {
         return;
@@ -13,7 +13,7 @@ export function createStore() {
 
       store[key] = value;
     },
-    get: <T = unknown>(key: string) => {
+    get<T = unknown>(key: string) {
       const store = als.getStore();
       if (!store) {
         return;
