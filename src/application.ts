@@ -15,7 +15,7 @@ export async function bootstrap(config: Config) {
 
   const store = createStore();
 
-  const router = createRouter();
+  const router = createRouter(config, logger);
   const server = await createServer(
     (req, res, ctx, done) => {
       let requestId = req.headers['x-request-id'];
