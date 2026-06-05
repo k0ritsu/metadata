@@ -21,8 +21,8 @@ export interface Modlock {
 }
 
 const NODE_MODULES = join(cwd(), 'node_modules');
-
 const MODULES = import.meta.dirname;
+
 const CACHE = join(MODULES, '.cache');
 
 const MODULES_ALIAS = '#modules/';
