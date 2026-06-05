@@ -7,16 +7,12 @@ class GracefulShutdownTimeout extends Error {
   }
 }
 
-interface Shutdown {
-  (): Promise<void>;
-}
-
 interface Config {
   timeout: number;
 }
 
 export function gracefulShutdown(
-  shutdown?: Shutdown,
+  shutdown?: () => Promise<void>,
   config: Config = {
     timeout: DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT
   }
