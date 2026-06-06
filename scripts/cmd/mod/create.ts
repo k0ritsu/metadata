@@ -2,14 +2,10 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { MODLOCK, MODULE, MODULES, ROOT_NODE } from './common/constants.ts';
+import { MODULE, MODULES, ROOT_NODE } from './common/constants.ts';
 import { createModuleKey } from './common/helpers/key.ts';
 import { assertModuleName } from './common/helpers/manifest.ts';
-import {
-  createEmptyModlock,
-  readModlock,
-  writeModlock
-} from './common/helpers/modlock.ts';
+import { readOrCreateModlock, writeModlock } from './common/helpers/modlock.ts';
 import { exists } from './common/helpers/path.ts';
 import { createTsconfigs } from './common/helpers/tsconfig.ts';
 import type { CommandHandler, ModuleManifest } from './common/types.ts';
@@ -65,11 +61,3 @@ export const create: CommandHandler = async (args: string[]) => {
     }
   ]);
 };
-
-async function readOrCreateModlock() {
-  if (await exists(resolve(MODULES, MODLOCK))) {
-    return readModlock();
-  }
-
-  return createEmptyModlock();
-}

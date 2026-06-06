@@ -28,7 +28,7 @@ export async function createTsconfigs(
   toUpdate?: Array<{
     root: string;
   }>
-) {
+): Promise<void> {
   const modlock = await readModlock();
   const modules = Object.keys(modlock.modules).filter(
     (key) => key !== ROOT_NODE
@@ -67,7 +67,7 @@ export async function createTsconfigs(
   ]);
 }
 
-function createModuleTsconfig(modlock: Modlock, key: string) {
+function createModuleTsconfig(modlock: Modlock, key: string): unknown {
   const root = resolveModuleRoot(key, modlock);
 
   const node = modlock.modules[key];
@@ -127,7 +127,7 @@ function createModuleTsconfig(modlock: Modlock, key: string) {
   };
 }
 
-function createBuildTsconfig(modlock: Modlock, modules: string[]) {
+function createBuildTsconfig(modlock: Modlock, modules: string[]): unknown {
   const root = resolve('.');
 
   return {
@@ -146,7 +146,7 @@ function createBuildTsconfig(modlock: Modlock, modules: string[]) {
   };
 }
 
-function toTsconfigPath(from: string, to: string) {
+function toTsconfigPath(from: string, to: string): string {
   const path = relative(from, to).split(sep).join('/');
   if (!path) {
     return '.';
@@ -159,7 +159,10 @@ function toTsconfigPath(from: string, to: string) {
   return `./${path}`;
 }
 
-async function removeStaleModuleTsconfigs(modlock: Modlock, modules: string[]) {
+async function removeStaleModuleTsconfigs(
+  modlock: Modlock,
+  modules: string[]
+): Promise<void> {
   const roots = new Set(modules.map((key) => resolveModuleRoot(key, modlock)));
   const stale: Promise<void>[] = [];
 
@@ -169,7 +172,11 @@ async function removeStaleModuleTsconfigs(modlock: Modlock, modules: string[]) {
   ]) {
     for await (const path of glob(pattern)) {
       if (!roots.has(dirname(path))) {
-        stale.push(rm(path));
+        stale.push(
+          rm(path, {
+            force: true
+          })
+        );
       }
     }
   }

@@ -1,12 +1,10 @@
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { MODRC, MODULES } from '../constants.ts';
-import type { Modrc } from '../types.ts';
-import { exists } from './path.ts';
+import { MODRC } from '../constants.ts';
+import { assertModrc, resolveModrc } from './modrc.ts';
 import { isRecord } from './record.ts';
 
-export async function resolveRepository(repository?: string) {
+export async function resolveRepository(repository?: string): Promise<string> {
   if (repository) {
     return repository;
   }
@@ -17,16 +15,13 @@ export async function resolveRepository(repository?: string) {
     `repository is required: no repository argument or ${MODRC} found`
   );
 
-  const modrc: Modrc = JSON.parse(
+  const modrc: unknown = JSON.parse(
     await readFile(path, {
       encoding: 'utf8'
     })
   );
 
-  assert(
-    typeof modrc.repository === 'string',
-    `${path}: repository is required`
-  );
+  assertModrc(modrc, path);
 
   return modrc.repository;
 }
@@ -41,7 +36,7 @@ export function createRepositoryError(
   prefix: string,
   response: Response,
   body: string
-) {
+): string {
   const fallback = `${prefix} with ${response.status} ${response.statusText}`;
 
   if (!body) {
@@ -56,15 +51,4 @@ export function createRepositoryError(
   } catch {}
 
   return `${fallback}: ${body}`;
-}
-
-async function resolveModrc() {
-  const path = resolve(MODULES, MODRC);
-
-  const found = await exists(path);
-  if (!found) {
-    return;
-  }
-
-  return path;
 }

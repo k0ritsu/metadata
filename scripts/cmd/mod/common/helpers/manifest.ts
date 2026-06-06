@@ -1,4 +1,4 @@
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import semver from 'semver';
@@ -10,7 +10,7 @@ interface ModuleManifestOptions {
   validateDependencyRanges: boolean;
 }
 
-export async function hasModuleManifest(root: string) {
+export async function hasModuleManifest(root: string): Promise<boolean> {
   if (basename(root) !== MODULE) {
     root = resolve(root, MODULE);
   }
@@ -27,29 +27,35 @@ export async function hasModuleManifest(root: string) {
 export async function readModuleManifest(
   path: string,
   options?: ModuleManifestOptions
-) {
+): Promise<ModuleManifest> {
   if (basename(path) !== MODULE) {
     path = resolve(path, MODULE);
   }
 
-  return parseModuleManifest(
-    await readFile(path, {
-      encoding: 'utf8'
-    }),
-    path,
-    options
-  );
+  const content = await readFile(path, {
+    encoding: 'utf8'
+  });
+
+  return parseModuleManifest(content, path, options);
 }
 
 export function parseModuleManifest(
   content: string,
   path: string,
   options?: ModuleManifestOptions
-) {
+): ModuleManifest {
   const manifest: unknown = JSON.parse(content);
   assertModuleManifest(manifest, path, options);
 
   return manifest;
+}
+
+export function assertModuleName(name: string): void {
+  assert(MODULE_NAME.test(name), `${name}: invalid module name`);
+}
+
+export function isSemver(value: string): boolean {
+  return semver.valid(value) === value;
 }
 
 function assertModuleManifest(
@@ -77,16 +83,12 @@ function assertModuleManifest(
   }
 }
 
-export function assertModuleName(name: string) {
-  assert(MODULE_NAME.test(name), `${name}: invalid module name`);
-}
-
 function assertDependencies(
   dependencies: unknown,
   options = {
     validateVersionRanges: false
   }
-) {
+): void {
   assert(isRecord(dependencies), 'dependencies must be an object');
 
   for (const [dependency, version] of Object.entries(dependencies)) {
@@ -99,8 +101,4 @@ function assertDependencies(
       `${dependency}: invalid dependency version`
     );
   }
-}
-
-export function isSemver(value: string) {
-  return semver.valid(value) === value;
 }

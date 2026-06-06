@@ -29,7 +29,7 @@ export const init: CommandHandler = async (args: string[]) => {
   await Promise.all([writeModrc(values.repository), writeInitialModlock()]);
 };
 
-async function writeModrc(repository?: string) {
+async function writeModrc(repository?: string): Promise<void> {
   const path = resolve(MODULES, MODRC);
   if (await exists(path)) {
     const modrc: unknown = JSON.parse(
@@ -40,23 +40,14 @@ async function writeModrc(repository?: string) {
 
     assertModrc(modrc, path);
 
-    const nextRepository = repository ?? modrc['repository'];
-    assert(nextRepository, `${path}: repository is required`);
+    const next = repository ?? modrc['repository'];
+    assert(next, `${path}: repository is required`);
 
-    if (modrc['repository'] === nextRepository) {
+    if (modrc['repository'] === next) {
       return;
     }
 
-    return writeFile(
-      path,
-      JSON.stringify(
-        {
-          repository: nextRepository
-        } satisfies Modrc,
-        undefined,
-        2
-      )
-    );
+    repository = next;
   }
 
   assert(repository, 'repository is required');
@@ -73,7 +64,7 @@ async function writeModrc(repository?: string) {
   );
 }
 
-async function writeInitialModlock() {
+async function writeInitialModlock(): Promise<void> {
   const path = resolve(MODULES, MODLOCK);
   if (await exists(path)) {
     await readModlock();

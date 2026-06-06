@@ -1,11 +1,11 @@
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { MODRC, MODULES } from '../constants.ts';
 import type { Modrc } from '../types.ts';
 import { exists } from './path.ts';
 import { isRecord } from './record.ts';
 
-export async function resolveModrc() {
+export async function resolveModrc(): Promise<string | undefined> {
   const path = resolve(MODULES, MODRC);
 
   const found = await exists(path);

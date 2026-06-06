@@ -67,7 +67,7 @@ export const status: CommandHandler = async () => {
   }
 };
 
-function formatStatusRow(row: Row) {
+function formatStatusRow(row: Row): string {
   switch (row.status) {
     case 'changed':
       return `${row.key}: integrity differs`;

@@ -37,7 +37,7 @@ export const build: CommandHandler = async () => {
   }
 };
 
-async function collectModulePaths() {
+async function collectModulePaths(): Promise<string[]> {
   const paths: string[] = [];
 
   for (const pattern of [
@@ -52,7 +52,11 @@ async function collectModulePaths() {
   return paths;
 }
 
-function isValidModuleRoot(root: string, dependency: string, version: string) {
+function isValidModuleRoot(
+  root: string,
+  dependency: string,
+  version: string
+): boolean {
   return isInsidePath(root, CACHE)
     ? basename(root) === createModuleKey(dependency, version)
     : basename(root) === dependency;

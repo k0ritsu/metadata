@@ -1,10 +1,11 @@
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { CACHE, MODLOCK, MODULES, ROOT_NODE } from '../constants.ts';
 import type { Modlock, ModlockNode } from '../types.ts';
 import { parseModuleKey } from './key.ts';
 import { assertModuleName, isSemver } from './manifest.ts';
+import { exists } from './path.ts';
 import { isRecord } from './record.ts';
 
 const LOCKFILE_VERSION = 1;
@@ -20,7 +21,7 @@ export function createEmptyModlock(): Modlock {
   };
 }
 
-export async function readModlock() {
+export async function readModlock(): Promise<Modlock> {
   const path = resolve(MODULES, MODLOCK);
 
   const modlock: unknown = JSON.parse(
@@ -34,8 +35,32 @@ export async function readModlock() {
   return modlock;
 }
 
-export async function writeModlock(modlock: Modlock) {
+export async function readOrCreateModlock(): Promise<Modlock> {
+  if (await exists(resolve(MODULES, MODLOCK))) {
+    return readModlock();
+  }
+
+  return createEmptyModlock();
+}
+
+export async function writeModlock(modlock: Modlock): Promise<void> {
   assertModlock(modlock, MODLOCK);
+
+  if (modlock.modules[ROOT_NODE]) {
+    modlock.modules[ROOT_NODE].dependencies = Object.fromEntries(
+      Object.entries(modlock.modules[ROOT_NODE].dependencies).sort(
+        ([left], [right]) => {
+          return left.localeCompare(right);
+        }
+      )
+    );
+  }
+
+  modlock.modules = Object.fromEntries(
+    Object.entries(modlock.modules).sort(([left], [right]) => {
+      return left.localeCompare(right);
+    })
+  );
 
   await writeFile(
     resolve(MODULES, MODLOCK),
@@ -43,7 +68,7 @@ export async function writeModlock(modlock: Modlock) {
   );
 }
 
-export function resolveModuleRoot(key: string, modlock: Modlock) {
+export function resolveModuleRoot(key: string, modlock: Modlock): string {
   const { dependency, version } = parseModuleKey(key);
 
   return isRootDependency(dependency, version, modlock)
@@ -55,7 +80,7 @@ function isRootDependency(
   dependency: string,
   version: string,
   modlock: Modlock
-) {
+): boolean {
   return modlock.modules[ROOT_NODE]?.dependencies[dependency] === version;
 }
 

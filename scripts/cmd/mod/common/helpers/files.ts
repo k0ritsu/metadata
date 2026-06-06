@@ -3,10 +3,10 @@ import { basename, relative, resolve } from 'node:path';
 import { TSCONFIG_PROJECT } from '../constants.ts';
 import { normalizePath } from './path.ts';
 
-export async function collectModuleFiles(root: string) {
+export async function collectModuleFiles(root: string): Promise<string[]> {
   const files: string[] = [];
 
-  async function visit(directory: string) {
+  async function visit(directory: string): Promise<void> {
     const entries = await readdir(directory, {
       withFileTypes: true
     });
