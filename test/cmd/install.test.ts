@@ -23,8 +23,8 @@ function runInstall(
   repository: Map<string, TestModule>,
   specs: string[]
 ) {
-  const tarballUrl = String(
-    pathToFileURL(resolve('scripts/cmd/mod/common/helpers/tarball.ts'))
+  const archiveUrl = String(
+    pathToFileURL(resolve('scripts/cmd/mod/common/helpers/archive.ts'))
   );
   const installUrl = String(
     pathToFileURL(resolve('scripts/cmd/mod/install.ts'))
@@ -38,7 +38,7 @@ function runInstall(
       `
 const repository = new Map(${JSON.stringify(Array.from(repository.entries()))});
 const [{ createGzipTarArchive }, { install }] = await Promise.all([
-  import(${JSON.stringify(tarballUrl)}),
+  import(${JSON.stringify(archiveUrl)}),
   import(${JSON.stringify(installUrl)})
 ]);
 
@@ -89,7 +89,7 @@ globalThis.fetch = async (input) => {
         )
       ),
       mode: 0o644,
-      path: 'module.json'
+      path: \`\${mod.name}-\${mod.version}/module.json\`
     }
   ]);
 

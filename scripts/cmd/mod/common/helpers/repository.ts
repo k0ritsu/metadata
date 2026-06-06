@@ -26,19 +26,36 @@ export async function resolveRepository(repository?: string): Promise<string> {
   return modrc.repository;
 }
 
-export function createRepositoryUrl(repository: string, path: string) {
-  const base = repository.endsWith('/') ? repository : `${repository}/`;
-
-  return new URL(path.replace(/^\/+/, ''), base);
+export function createRepositoryUrl(repository: string, path: string): string {
+  return new URL(path, repository).href;
 }
 
-export function createRepositoryError(
-  prefix: string,
-  response: Response,
-  body: string
-): string {
-  const fallback = `${prefix} with ${response.status} ${response.statusText}`;
+export async function fetchRepository(
+  repository: string,
+  path: string,
+  init?: RequestInit
+): Promise<unknown> {
+  const response = await fetchUrl(createRepositoryUrl(repository, path), init);
 
+  return response.json();
+}
+
+export async function fetchUrl(
+  url: string,
+  init?: RequestInit
+): Promise<Response> {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    throw new Error(await formatRepositoryError(response));
+  }
+
+  return response;
+}
+
+async function formatRepositoryError(response: Response): Promise<string> {
+  const fallback = `repository request failed with ${response.status}`;
+
+  const body = await response.text();
   if (!body) {
     return fallback;
   }

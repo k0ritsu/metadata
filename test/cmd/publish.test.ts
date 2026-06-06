@@ -63,8 +63,8 @@ function runPublish(root: string) {
   const publishUrl = String(
     pathToFileURL(resolve('scripts/cmd/mod/publish.ts'))
   );
-  const tarballUrl = String(
-    pathToFileURL(resolve('scripts/cmd/mod/common/helpers/tarball.ts'))
+  const archiveUrl = String(
+    pathToFileURL(resolve('scripts/cmd/mod/common/helpers/archive.ts'))
   );
 
   return execFileSync(
@@ -72,9 +72,9 @@ function runPublish(root: string) {
     [
       '--input-type=module',
       '--eval',
-      `const [{ publish }, { extractInstallArchive }] = await Promise.all([
+      `const [{ publish }, { extractGzipTarArchive }] = await Promise.all([
   import(${JSON.stringify(publishUrl)}),
-  import(${JSON.stringify(tarballUrl)})
+  import(${JSON.stringify(archiveUrl)})
 ]);
 
 globalThis.fetch = async (input, init) => {
@@ -90,7 +90,7 @@ globalThis.fetch = async (input, init) => {
     return new Response('', { status: 404 });
   }
 
-  const files = await extractInstallArchive(
+  const files = await extractGzipTarArchive(
     Buffer.from(await init.body.arrayBuffer())
   );
   const paths = files.map((file) => file.path).sort();
@@ -107,9 +107,10 @@ globalThis.fetch = async (input, init) => {
   return new Response(
     JSON.stringify({
       name: 'app',
+      description: '',
       version: '1.0.0',
       repositoryUrl: 'https://repo.local/modules/app',
-      resolved: 'https://repo.local/modules/app/versions/1.0.0/archive'
+      archiveUrl: 'https://repo.local/modules/app/versions/1.0.0/archive'
     }),
     {
       headers: {

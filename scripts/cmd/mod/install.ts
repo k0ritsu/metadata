@@ -4,6 +4,10 @@ import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import semver from 'semver';
 import { CACHE, MODULE, MODULES, ROOT_NODE } from './common/constants.ts';
+import {
+  extractGzipTarArchive,
+  type TarFile
+} from './common/helpers/archive.ts';
 import { createModuleIntegrity } from './common/helpers/integrity.ts';
 import { createModuleKey, parseModuleKey } from './common/helpers/key.ts';
 import {
@@ -19,21 +23,18 @@ import {
 } from './common/helpers/modlock.ts';
 import { exists, isInsidePath } from './common/helpers/path.ts';
 import {
-  createRepositoryError,
   createRepositoryUrl,
+  fetchRepository,
+  fetchUrl,
   resolveRepository
 } from './common/helpers/repository.ts';
-import {
-  extractInstallArchive,
-  type TarFile
-} from './common/helpers/tarball.ts';
 import { createTsconfigs } from './common/helpers/tsconfig.ts';
-import type { CommandHandler } from './common/types.ts';
+import type { CommandHandler, ModuleManifest } from './common/types.ts';
 import { tidy } from './tidy.ts';
 
 interface InstallSpec {
   name: string;
-  version?: string;
+  version: string | undefined;
 }
 
 interface InstallMetadata {
@@ -57,6 +58,7 @@ export const install: CommandHandler = async (args: string[]) => {
 
   if (positionals.length === 0) {
     await installFromModlock();
+
     return;
   }
 
@@ -68,14 +70,15 @@ export const install: CommandHandler = async (args: string[]) => {
   }
 
   const rootSet = await loadRootSet();
-  const installedDependencies = new Set<string>();
+  const installed = new Set<string>();
+
   for (const [name] of rootSet) {
     await installDependencies(
       repository,
       resolve(MODULES, name),
-      rootSet,
       metadata,
-      installedDependencies
+      rootSet,
+      installed
     );
   }
 
@@ -83,7 +86,7 @@ export const install: CommandHandler = async (args: string[]) => {
   await mergeInstalledMetadata(metadata);
 };
 
-async function installFromModlock() {
+async function installFromModlock(): Promise<void> {
   const modlock = await readModlock();
 
   for (const [key, node] of Object.entries(modlock.modules)) {
@@ -91,13 +94,20 @@ async function installFromModlock() {
       continue;
     }
 
-    assert(node.resolved, `${key}: resolved is required`);
-    assert(node.integrity, `${key}: integrity is required`);
+    assert(node.resolved, `${key}: missing resolved`);
+    assert(node.integrity, `${key}: missing integrity`);
 
-    const { dependency: name, version } = parseModuleKey(key);
-    const root = resolveModuleRoot(modlock, key);
+    const { dependency, version } = parseModuleKey(key);
+    const root = resolveModuleRoot(key, modlock);
 
-    await installArtifactAtRoot(node.resolved, name, version, root);
+    await installArtifactAtRoot(
+      root,
+      {
+        name: dependency,
+        version
+      },
+      node.resolved
+    );
 
     const actual = await createModuleIntegrity(root);
     assert(actual === node.integrity, `${key}: integrity verification failed`);
@@ -106,17 +116,41 @@ async function installFromModlock() {
   await createTsconfigs();
 }
 
+function parseInstallSpec(spec: string): InstallSpec {
+  let name = spec;
+  let version: string | undefined;
+
+  const index = spec.lastIndexOf('@');
+  if (index > 0) {
+    name = spec.slice(0, index);
+    version = spec.slice(index + 1);
+  }
+
+  assertModuleName(name);
+  assert(
+    version === undefined ||
+      version === LATEST ||
+      semver.validRange(version) !== null,
+    `${version}: invalid module version`
+  );
+
+  return {
+    name,
+    version
+  };
+}
+
 async function installRequestedRoot(
   repository: string,
   spec: InstallSpec,
   metadata: Map<string, InstallMetadata>
-) {
+): Promise<void> {
   const version = await resolveVersion(repository, spec);
+
   const key = createModuleKey(spec.name, version);
   const root = resolve(MODULES, spec.name);
-  const cached = resolve(CACHE, key);
-  const existing = await readManifestOrUndefined(root);
 
+  const existing = await readManifestOrUndefined(root);
   if (existing) {
     assert(
       existing.name === spec.name,
@@ -128,37 +162,64 @@ async function installRequestedRoot(
     }
   }
 
+  const cached = resolve(CACHE, key);
   if (await exists(cached)) {
     await rm(root, {
       force: true,
       recursive: true
     });
     await rename(cached, root);
+
     return;
   }
 
-  const resolved = String(
-    createRepositoryUrl(
-      repository,
-      `modules/${spec.name}/versions/${version}/archive`
-    )
-  );
-  await installArtifactAtRoot(resolved, spec.name, version, root);
+  spec = {
+    name: spec.name,
+    version
+  };
 
+  const resolved = createArchiveUrl(repository, spec);
+
+  await installArtifactAtRoot(root, spec, resolved);
   metadata.set(key, {
     integrity: await createModuleIntegrity(root),
     resolved
   });
 }
 
+async function readManifestOrUndefined(
+  root: string
+): Promise<ModuleManifest | undefined> {
+  try {
+    return await readInstalledManifest(root);
+  } catch {
+    return;
+  }
+}
+
+async function loadRootSet(): Promise<Map<string, string>> {
+  const rootSet = new Map<string, string>();
+
+  for await (const path of glob(resolve(MODULES, '*', MODULE))) {
+    const manifest = await readModuleManifest(path, {
+      validateDependencyRanges: true
+    });
+
+    rootSet.set(manifest.name, manifest.version);
+  }
+
+  return rootSet;
+}
+
 async function installDependencies(
   repository: string,
   root: string,
-  rootSet: Map<string, string>,
   metadata: Map<string, InstallMetadata>,
+  rootSet: Map<string, string>,
   installed: Set<string>
-) {
+): Promise<void> {
   const manifest = await readInstalledManifest(root);
+
   const key = createModuleKey(manifest.name, manifest.version);
   if (installed.has(key)) {
     return;
@@ -166,73 +227,63 @@ async function installDependencies(
 
   installed.add(key);
 
-  for (const [name, range] of Object.entries(manifest.dependencies ?? {})) {
-    const rootVersion = rootSet.get(name);
-    if (rootVersion && semver.satisfies(rootVersion, range)) {
-      await installDependencies(
-        repository,
-        resolve(MODULES, name),
-        rootSet,
-        metadata,
-        installed
-      );
-      continue;
-    }
-
-    const version = await resolveVersion(repository, {
-      name,
-      version: range
-    });
-    const dependencyKey = createModuleKey(name, version);
-    const dependencyRoot = resolve(CACHE, dependencyKey);
-
-    if (!(await exists(dependencyRoot))) {
-      const resolved = String(
-        createRepositoryUrl(
+  if (manifest.dependencies) {
+    for (const [name, range] of Object.entries(manifest.dependencies)) {
+      let version = rootSet.get(name);
+      if (version && semver.satisfies(version, range)) {
+        await installDependencies(
           repository,
-          `modules/${name}/versions/${version}/archive`
-        )
-      );
-      await installArtifactAtRoot(resolved, name, version, dependencyRoot);
-      metadata.set(dependencyKey, {
-        integrity: await createModuleIntegrity(dependencyRoot),
-        resolved
-      });
-    }
+          resolve(MODULES, name),
+          metadata,
+          rootSet,
+          installed
+        );
 
-    await installDependencies(
-      repository,
-      dependencyRoot,
-      rootSet,
-      metadata,
-      installed
-    );
+        continue;
+      }
+
+      version = await resolveVersion(repository, {
+        name,
+        version: range
+      });
+
+      const key = createModuleKey(name, version);
+      const root = resolve(CACHE, key);
+
+      const found = await exists(root);
+      if (!found) {
+        const spec = {
+          name,
+          version
+        };
+
+        const resolved = createArchiveUrl(repository, spec);
+
+        await installArtifactAtRoot(root, spec, resolved);
+        metadata.set(key, {
+          integrity: await createModuleIntegrity(root),
+          resolved
+        });
+      }
+
+      await installDependencies(repository, root, metadata, rootSet, installed);
+    }
   }
 }
 
-function parseInstallSpec(spec: string): InstallSpec {
-  const separator = spec.lastIndexOf('@');
-  const name = separator > 0 ? spec.slice(0, separator) : spec;
-  const version = separator > 0 ? spec.slice(separator + 1) : undefined;
-
-  assertModuleName(name);
-  assert(
-    version === undefined ||
-      version === LATEST ||
-      semver.validRange(version) !== null,
-    `${version}: invalid module version spec`
-  );
-
-  return {
-    name,
-    ...(version === undefined ? {} : { version })
-  };
+function readInstalledManifest(root: string): Promise<ModuleManifest> {
+  return readModuleManifest(root, {
+    validateDependencyRanges: true
+  });
 }
 
-async function resolveVersion(repository: string, spec: InstallSpec) {
+async function resolveVersion(
+  repository: string,
+  spec: InstallSpec
+): Promise<string> {
   const versions = await getVersions(repository, spec.name);
-  const sorted = semver.rsort(versions.filter(isSemver));
 
+  const sorted = semver.rsort(versions.filter(isSemver));
   assert(sorted.length > 0, `${spec.name}: no published versions found`);
 
   if (!spec.version || spec.version === LATEST) {
@@ -257,19 +308,15 @@ async function resolveVersion(repository: string, spec: InstallSpec) {
   return version;
 }
 
-async function getVersions(repository: string, name: string) {
-  const response = await fetch(
-    createRepositoryUrl(repository, `modules/${name}/versions`)
+async function getVersions(
+  repository: string,
+  name: string
+): Promise<string[]> {
+  const versions = await fetchRepository(
+    repository,
+    `modules/${name}/versions`
   );
-  const body = await response.text();
 
-  if (!response.ok) {
-    throw new Error(
-      createRepositoryError('Fetch versions failed', response, body)
-    );
-  }
-
-  const versions: unknown = JSON.parse(body);
   assert(
     Array.isArray(versions) &&
       versions.every((version) => typeof version === 'string'),
@@ -279,61 +326,70 @@ async function getVersions(repository: string, name: string) {
   return versions;
 }
 
-async function installArtifactAtRoot(
-  url: string,
-  name: string,
-  version: string,
-  root: string
-) {
-  const archive = await downloadArchive(url);
-  const files = await extractInstallArchive(archive);
-  const manifest = readManifest(files);
-
-  assert(
-    manifest.name === name,
-    `${MODULE}: expected module "${name}", got "${manifest.name}"`
+function createArchiveUrl(
+  repository: string,
+  spec: NonNullable<InstallSpec>
+): string {
+  return createRepositoryUrl(
+    repository,
+    `modules/${spec.name}/versions/${spec.version}/archive`
   );
+}
+
+async function installArtifactAtRoot(
+  root: string,
+  spec: NonNullable<InstallSpec>,
+  url: string
+): Promise<void> {
+  const archive = await downloadArchive(url);
+  const files = normalizeArchiveFiles(await extractGzipTarArchive(archive));
+
+  const manifest = readManifest(files);
   assert(
-    manifest.version === version,
-    `${MODULE}: expected ${name}@${version}, got ${manifest.name}@${manifest.version}`
+    manifest.version === spec.version,
+    `${MODULE}: expected ${spec.name}@${spec.version}, got ${manifest.name}@${manifest.version}`
   );
 
   await writeModule(root, files);
+
   console.log(`Installed ${manifest.name}@${manifest.version}`);
 }
 
-async function downloadArchive(url: string) {
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(
-      createRepositoryError(
-        'Download archive failed',
-        response,
-        await response.text()
-      )
-    );
-  }
+async function downloadArchive(url: string): Promise<Buffer> {
+  const response = await fetchUrl(url);
 
   return Buffer.from(await response.arrayBuffer());
 }
 
-function readManifest(files: TarFile[]) {
-  const moduleJson = files.find((file) => file.path === MODULE);
-  assert(moduleJson, `Archive must contain ${MODULE}.`);
+function normalizeArchiveFiles(files: TarFile[]): TarFile[] {
+  if (files.some((file) => file.path === MODULE)) {
+    return files;
+  }
 
-  return parseModuleManifest(moduleJson.content.toString(), MODULE, {
+  const [root] = new Set(files.map((file) => file.path.split('/')[0]));
+  assert(root, 'archive must contain files at a common root');
+
+  assert(
+    files.every((file) => file.path.startsWith(`${root}/`)),
+    'archive must contain files at a common root'
+  );
+
+  return files.map((file) => ({
+    ...file,
+    path: file.path.slice(root.length + 1)
+  }));
+}
+
+function readManifest(files: TarFile[]): ModuleManifest {
+  const file = files.find((file) => file.path === MODULE);
+  assert(file, `archive must contain ${MODULE}`);
+
+  return parseModuleManifest(file.content.toString(), MODULE, {
     validateDependencyRanges: true
   });
 }
 
-async function readInstalledManifest(root: string) {
-  return readModuleManifest(root, {
-    validateDependencyRanges: true
-  });
-}
-
-async function writeModule(root: string, files: TarFile[]) {
+async function writeModule(root: string, files: TarFile[]): Promise<void> {
   await rm(root, {
     force: true,
     recursive: true
@@ -354,28 +410,9 @@ async function writeModule(root: string, files: TarFile[]) {
   }
 }
 
-async function readManifestOrUndefined(root: string) {
-  try {
-    return await readInstalledManifest(root);
-  } catch {
-    return undefined;
-  }
-}
-
-async function loadRootSet() {
-  const rootSet = new Map<string, string>();
-
-  for await (const path of glob(resolve(MODULES, '*', MODULE))) {
-    const mod = await readModuleManifest(path, {
-      validateDependencyRanges: true
-    });
-    rootSet.set(mod.name, mod.version);
-  }
-
-  return rootSet;
-}
-
-async function mergeInstalledMetadata(metadata: Map<string, InstallMetadata>) {
+async function mergeInstalledMetadata(
+  metadata: Map<string, InstallMetadata>
+): Promise<void> {
   if (metadata.size === 0) {
     return;
   }
