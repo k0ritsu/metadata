@@ -101,15 +101,15 @@ test('tidy builds a flat modlock from root modules and cache', () => {
           app: '1.0.0'
         }
       },
-      'lib@1.2.0': {
-        dependencies: {},
-        integrity: 'sha512-old',
-        resolved: 'https://repo.local/modules/lib/1.2.0'
-      },
       'app@1.0.0': {
         dependencies: {
           lib: '1.2.0'
         }
+      },
+      'lib@1.2.0': {
+        dependencies: {},
+        integrity: 'sha512-old',
+        resolved: 'https://repo.local/modules/lib/1.2.0'
       }
     }
   });
@@ -136,10 +136,10 @@ test('tidy builds a flat modlock from root modules and cache', () => {
       path: './tsconfig.json'
     },
     {
-      path: './src/modules/.cache/lib@1.2.0/tsconfig.json'
+      path: './src/modules/app/tsconfig.json'
     },
     {
-      path: './src/modules/app/tsconfig.json'
+      path: './src/modules/.cache/lib@1.2.0/tsconfig.json'
     }
   ]);
 });
@@ -175,15 +175,15 @@ test('tidy uses cache when a root module has a different version', () => {
           lib: '1.0.0'
         }
       },
-      'lib@2.0.0': {
-        dependencies: {}
-      },
       'app@1.0.0': {
         dependencies: {
           lib: '2.0.0'
         }
       },
       'lib@1.0.0': {
+        dependencies: {}
+      },
+      'lib@2.0.0': {
         dependencies: {}
       }
     }

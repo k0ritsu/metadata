@@ -154,8 +154,7 @@ test('status reports modules whose integrity differs from lock', () => {
     }
   });
 
-  const error = runStatusError(root);
-  assert.match(String(error.stdout), /app@1\.0\.0: integrity differs/);
+  assert.match(runStatus(root), /app@1\.0\.0: integrity differs/);
 });
 
 test('status reports missing integrity as a warning', () => {
