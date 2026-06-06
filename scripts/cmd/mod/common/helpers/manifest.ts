@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import semver from 'semver';
 import { MODULE, MODULE_NAME } from '../constants.ts';
@@ -8,20 +8,6 @@ import { isRecord } from './record.ts';
 
 interface ModuleManifestOptions {
   validateDependencyRanges: boolean;
-}
-
-export async function hasModuleManifest(root: string): Promise<boolean> {
-  if (basename(root) !== MODULE) {
-    root = resolve(root, MODULE);
-  }
-
-  try {
-    const stats = await stat(resolve(root, MODULE));
-
-    return stats.isFile();
-  } catch {
-    return false;
-  }
 }
 
 export async function readModuleManifest(

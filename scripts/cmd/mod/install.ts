@@ -346,7 +346,7 @@ async function installArtifactAtRoot(
 
   const manifest = readManifest(files);
   assert(
-    manifest.version === spec.version,
+    manifest.name === spec.name && manifest.version === spec.version,
     `${MODULE}: expected ${spec.name}@${spec.version}, got ${manifest.name}@${manifest.version}`
   );
 
