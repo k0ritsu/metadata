@@ -23,7 +23,7 @@ interface HttpHandler {
   (
     req: Request,
     params: Record<string, string | undefined>,
-    searchParams: Record<string, string>
+    searchParams: URLSearchParams
   ): Promise<Response>;
 }
 
@@ -55,7 +55,7 @@ export function createRouter(config: Config, logger: Logger) {
               }
             ),
             params,
-            searchParams
+            new URLSearchParams(searchParams)
           );
 
           res.writeHead(result.status, Object.fromEntries(result.headers));
@@ -94,7 +94,7 @@ export function createRouter(config: Config, logger: Logger) {
   };
 }
 
-function extractBody(req: IncomingMessage) {
+function extractBody(req: IncomingMessage): Readable | null {
   if (
     req.headers['content-length'] !== undefined &&
     req.headers['transfer-encoding'] !== undefined
@@ -105,7 +105,7 @@ function extractBody(req: IncomingMessage) {
   return null;
 }
 
-function transformHeaders(headers: IncomingHttpHeaders) {
+function transformHeaders(headers: IncomingHttpHeaders): Headers {
   return Object.entries(headers).reduce((acc, [key, val]) => {
     if (val == null) {
       return acc;
