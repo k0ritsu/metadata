@@ -17,7 +17,7 @@ const TSCONFIG_BUILD = resolve('tsconfig.build.json');
 const TSCONFIG = resolve(TSCONFIG_PROJECT);
 
 const CORE_ALIASES = {
-  // '#core/errors': resolve('src', 'errors', '*'),
+  '#core/errors/*': resolve('src', 'errors', '*'),
   '#core/loader': resolve('src', 'loader', 'types.ts'),
   '#core/logger': resolve('src', 'logger', 'types.ts'),
   '#core/router': resolve('src', 'router', 'types.ts'),

@@ -27,9 +27,12 @@ interface ModuleAlias {
 const NODE_MODULES = join(cwd(), 'node_modules');
 const MODULES = import.meta.dirname;
 
+const SOURCE = join(MODULES, '..');
 const CACHE = join(MODULES, '.cache');
 
+const CORE_ALIAS = '#core/';
 const MODULES_ALIAS = '#modules/';
+
 const ROOT_NODE = '';
 
 const EXTENSION = extname(import.meta.filename);
@@ -49,7 +52,16 @@ export const resolve: ResolveHook = (specifier, context, nextResolve) => {
   }
 
   if (isInsidePath(context, MODULES)) {
-    specifier = resolveModuleSpecifier(specifier, context);
+    if (specifier.startsWith(CORE_ALIAS)) {
+      const path = specifier.slice(CORE_ALIAS.length);
+      if (!path) {
+        throw new Error(`Invalid core alias "${specifier}"`);
+      }
+
+      specifier = join(SOURCE, path);
+    } else {
+      specifier = resolveModuleSpecifier(specifier, context);
+    }
   }
 
   return nextResolve(withRuntimeExtension(specifier), context);

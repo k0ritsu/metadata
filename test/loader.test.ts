@@ -361,6 +361,54 @@ console.log(value);
   }
 });
 
+test('loader resolves core aliases inside modules', () => {
+  const appName = `loader-test-${process.pid}-core`;
+  const app = resolve(MODULES, appName);
+
+  try {
+    writeModuleManifest(app, appName, '1.0.0');
+    write(
+      resolve(app, 'src', 'main.ts'),
+      `import { DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT } from '#core/constants.js';
+import { Conflict } from '#core/errors/conflict.js';
+import { NotFound } from '#core/errors/not-found.js';
+
+console.log(
+  [
+    new NotFound().status,
+    new Conflict().status,
+    DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT
+  ].join(':')
+);
+`
+    );
+
+    withModlock(
+      {
+        '': {
+          dependencies: {
+            [appName]: '1.0.0'
+          }
+        },
+        [`${appName}@1.0.0`]: {
+          dependencies: {}
+        }
+      },
+      () => {
+        assert.equal(
+          runModule(resolve(app, 'src', 'main.ts')),
+          '404:409:60000'
+        );
+      }
+    );
+  } finally {
+    rmSync(app, {
+      force: true,
+      recursive: true
+    });
+  }
+});
+
 test('loader does not resolve module aliases outside src/modules', () => {
   const root = resolve('src', `loader-test-${process.pid}-outside`);
 

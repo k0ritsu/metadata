@@ -127,9 +127,20 @@ test('tidy builds a flat modlock from root modules and cache', () => {
     ['../../router/types.ts']
   );
   assert.deepEqual(
+    readJson(join(modules, 'app', 'tsconfig.json')).compilerOptions.paths[
+      '#core/errors/*'
+    ],
+    ['../../errors/*']
+  );
+  assert.deepEqual(
     readJson(join(modules, '.cache', 'lib@1.2.0', 'tsconfig.json'))
       .compilerOptions.paths['#core/router'],
     ['../../../router/types.ts']
+  );
+  assert.deepEqual(
+    readJson(join(modules, '.cache', 'lib@1.2.0', 'tsconfig.json'))
+      .compilerOptions.paths['#core/errors/*'],
+    ['../../../errors/*']
   );
   assert.deepEqual(readJson(join(root, 'tsconfig.build.json')).references, [
     {
