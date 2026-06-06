@@ -52,16 +52,9 @@ export const resolve: ResolveHook = (specifier, context, nextResolve) => {
   }
 
   if (isInsidePath(context, MODULES)) {
-    if (specifier.startsWith(CORE_ALIAS)) {
-      const path = specifier.slice(CORE_ALIAS.length);
-      if (!path) {
-        throw new Error(`Invalid core alias "${specifier}"`);
-      }
-
-      specifier = join(SOURCE, path);
-    } else {
-      specifier = resolveModuleSpecifier(specifier, context);
-    }
+    specifier = resolveCoreSpecifier(specifier, () => {
+      return resolveModuleSpecifier(specifier, context);
+    });
   }
 
   return nextResolve(withRuntimeExtension(specifier), context);
@@ -70,6 +63,22 @@ export const resolve: ResolveHook = (specifier, context, nextResolve) => {
 export const load: LoadHook = (url, context, nextLoad) => {
   return nextLoad(url, context);
 };
+
+function resolveCoreSpecifier(
+  specifier: string,
+  fallback: () => string
+): string {
+  if (!specifier.startsWith(CORE_ALIAS)) {
+    return fallback();
+  }
+
+  const path = specifier.slice(CORE_ALIAS.length);
+  if (!path) {
+    throw new Error(`Invalid core alias "${specifier}"`);
+  }
+
+  return join(SOURCE, path);
+}
 
 function resolveModuleSpecifier(
   specifier: string,
