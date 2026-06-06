@@ -29,7 +29,10 @@ sha512-...
 
 ## `mod status`
 
-`mod status` checks only root modules listed in `modules[""].dependencies`.
+`mod status` shows local changes in root modules by comparing files on disk with
+the `integrity` values saved in `modlock.json`.
+
+It checks only modules listed in `modules[""].dependencies`.
 
 For each module it:
 
@@ -42,8 +45,9 @@ For each module it:
 
 Exit codes:
 
-- `0`: no root module differs, and any missing integrity entries were warnings;
-- `1`: at least one root module differs or is missing on disk.
+- `0`: check completed. Changed modules and missing `integrity` are reported in
+  output, but do not fail the command;
+- `1`: a root module from `modlock.json` is missing on disk.
 
 Output format:
 

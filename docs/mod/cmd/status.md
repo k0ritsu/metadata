@@ -1,6 +1,7 @@
 # `mod status`
 
-Shows root modules whose current files differ from locked integrity.
+Shows local changes in root modules by comparing files on disk with the
+`integrity` values saved in `modlock.json`.
 
 ```bash
 mod status
@@ -83,8 +84,9 @@ When everything matches, the command prints nothing.
 
 ## Exit Codes
 
-- `0`: no root module differs, and any missing integrity entries were warnings;
-- `1`: at least one root module differs or is missing on disk.
+- `0`: check completed. Changed modules and missing `integrity` are reported in
+  output, but do not fail the command;
+- `1`: a root module from `modlock.json` is missing on disk.
 
 ## Does Not
 
