@@ -21,7 +21,7 @@ export const build: CommandHandler = async () => {
 
     assert(
       isValidModuleRoot(root, manifest.name, manifest.version),
-      `${root}: module directory does not match ${createModuleKey(manifest.name, manifest.version)}`
+      `${root}: invalid module root for ${manifest.name}@${manifest.version}`
     );
 
     if (manifest.main?.endsWith(TYPESCRIPT_EXTENSION)) {
@@ -49,7 +49,7 @@ async function collectModulePaths() {
     }
   }
 
-  return paths.sort((left, right) => left.localeCompare(right));
+  return paths;
 }
 
 function isValidModuleRoot(root: string, dependency: string, version: string) {

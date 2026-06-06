@@ -13,11 +13,6 @@ export async function collectModuleFiles(root: string) {
 
     for (const entry of entries) {
       const absolute = resolve(directory, entry.name);
-      const path = normalizePath(relative(root, absolute));
-
-      if (isExcludedModulePath(path)) {
-        continue;
-      }
 
       if (entry.isDirectory()) {
         await visit(absolute);
@@ -25,8 +20,13 @@ export async function collectModuleFiles(root: string) {
         continue;
       }
 
-      if (entry.isFile()) {
-        files.push(path);
+      const path = normalizePath(relative(root, absolute));
+      switch (true) {
+        case basename(path) === TSCONFIG_PROJECT:
+          continue;
+        case entry.isFile():
+          files.push(path);
+          continue;
       }
     }
   }
@@ -34,8 +34,4 @@ export async function collectModuleFiles(root: string) {
   await visit(root);
 
   return files.sort((left, right) => left.localeCompare(right));
-}
-
-function isExcludedModulePath(path: string) {
-  return basename(path) === TSCONFIG_PROJECT;
 }

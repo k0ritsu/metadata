@@ -28,8 +28,8 @@ export const create: CommandHandler = async (args: string[]) => {
 
   const root = resolve(MODULES, name);
 
-  const rooted = await exists(root);
-  assert(!rooted, `${name}: root module already exists`);
+  const found = await exists(root);
+  assert(!found, `${name}: root module already exists`);
 
   const manifest = {
     name,
@@ -68,7 +68,7 @@ export const create: CommandHandler = async (args: string[]) => {
 
 async function readOrCreateModlock() {
   if (await exists(resolve(MODULES, MODLOCK))) {
-    return await readModlock();
+    return readModlock();
   }
 
   return createEmptyModlock();

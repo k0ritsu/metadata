@@ -13,24 +13,24 @@ interface Row {
 
 export const status: CommandHandler = async () => {
   const modlock = await readModlock();
+
+  const dependencies = modlock.modules[ROOT_NODE]?.dependencies ?? {};
   const rows: Row[] = [];
 
-  let hasFailure = false;
+  let failed = false;
 
-  for (const [dependency, version] of Object.entries(
-    modlock.modules[ROOT_NODE]?.dependencies ?? {}
-  )) {
+  for (const [dependency, version] of Object.entries(dependencies)) {
     const key = createModuleKey(dependency, version);
     const root = resolve(MODULES, dependency);
 
-    const rooted = await exists(root);
-    if (!rooted) {
+    const found = await exists(root);
+    if (!found) {
       rows.push({
         key,
         status: 'missing-module'
       });
 
-      hasFailure = true;
+      failed = true;
 
       continue;
     }
@@ -42,6 +42,8 @@ export const status: CommandHandler = async () => {
         status: 'missing-integrity'
       });
 
+      failed = true;
+
       continue;
     }
 
@@ -52,8 +54,6 @@ export const status: CommandHandler = async () => {
         status: 'changed'
       });
 
-      hasFailure = true;
-
       continue;
     }
   }
@@ -62,7 +62,7 @@ export const status: CommandHandler = async () => {
     console.log(formatStatusRow(row));
   }
 
-  if (hasFailure) {
+  if (failed) {
     process.exitCode = 1;
   }
 };

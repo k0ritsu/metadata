@@ -39,19 +39,19 @@ export const remove: CommandHandler = async (args: string[]) => {
     const root = resolve(MODULES, name);
     const cache = resolve(CACHE, createModuleKey(name, version));
 
-    const rooted = await exists(root);
-    const cached = await exists(cache);
+    if (await exists(root)) {
+      const found = await exists(cache);
+      if (!found) {
+        await cp(root, cache, {
+          recursive: true
+        });
+      }
 
-    if (rooted && !cached) {
-      await cp(root, cache, {
+      await rm(root, {
+        force: true,
         recursive: true
       });
     }
-
-    await rm(root, {
-      force: true,
-      recursive: true
-    });
   }
 
   await tidy([]);

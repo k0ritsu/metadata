@@ -4,12 +4,12 @@ export function createModuleKey(dependency: string, version: string) {
 
 export function parseModuleKey(key: string) {
   const index = key.lastIndexOf('@');
-  if (index <= 0 || index === key.length - 1) {
-    throw new Error(`${key}: invalid module key`);
+  if (index > 0 && index < key.length - 1) {
+    return {
+      dependency: key.slice(0, index),
+      version: key.slice(index + 1)
+    };
   }
 
-  return {
-    dependency: key.slice(0, index),
-    version: key.slice(index + 1)
-  };
+  throw new Error(`${key}: invalid module key`);
 }

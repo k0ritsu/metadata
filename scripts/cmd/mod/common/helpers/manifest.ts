@@ -7,10 +7,14 @@ import type { ModuleManifest } from '../types.ts';
 import { isRecord } from './record.ts';
 
 interface ModuleManifestOptions {
-  validateDependencyRanges?: boolean;
+  validateDependencyRanges: boolean;
 }
 
 export async function hasModuleManifest(root: string) {
+  if (basename(root) !== MODULE) {
+    root = resolve(root, MODULE);
+  }
+
   try {
     const stats = await stat(resolve(root, MODULE));
 
@@ -21,18 +25,18 @@ export async function hasModuleManifest(root: string) {
 }
 
 export async function readModuleManifest(
-  root: string,
-  options: ModuleManifestOptions = {}
+  path: string,
+  options?: ModuleManifestOptions
 ) {
-  if (basename(root) !== MODULE) {
-    root = resolve(root, MODULE);
+  if (basename(path) !== MODULE) {
+    path = resolve(path, MODULE);
   }
 
   return parseModuleManifest(
-    await readFile(root, {
+    await readFile(path, {
       encoding: 'utf8'
     }),
-    root,
+    path,
     options
   );
 }
@@ -40,18 +44,20 @@ export async function readModuleManifest(
 export function parseModuleManifest(
   content: string,
   path: string,
-  options: ModuleManifestOptions = {}
+  options?: ModuleManifestOptions
 ) {
-  const mod: unknown = JSON.parse(content);
-  assertModuleManifest(mod, path, options);
+  const manifest: unknown = JSON.parse(content);
+  assertModuleManifest(manifest, path, options);
 
-  return mod;
+  return manifest;
 }
 
 function assertModuleManifest(
   value: unknown,
   path: string,
-  options: ModuleManifestOptions = {}
+  options = {
+    validateDependencyRanges: false
+  }
 ): asserts value is ModuleManifest {
   assert(isRecord(value), `${path}: manifest must be an object`);
 
@@ -60,26 +66,26 @@ function assertModuleManifest(
 
   assert(typeof value['version'] === 'string', `${path}: version is required`);
   assert(
-    semver.valid(value['version']) === value['version'],
+    isSemver(value['version']),
     `${value['version']}: invalid module version`
   );
 
   if (value['dependencies'] !== undefined) {
     assertDependencies(value['dependencies'], {
-      validateVersionRanges: Boolean(options.validateDependencyRanges)
+      validateVersionRanges: options.validateDependencyRanges
     });
   }
 }
 
-export function assertModuleName(name: ModuleManifest['name']) {
+export function assertModuleName(name: string) {
   assert(MODULE_NAME.test(name), `${name}: invalid module name`);
 }
 
-export function assertDependencies(
+function assertDependencies(
   dependencies: unknown,
-  options: {
-    validateVersionRanges?: boolean;
-  } = {}
+  options = {
+    validateVersionRanges: false
+  }
 ) {
   assert(isRecord(dependencies), 'dependencies must be an object');
 

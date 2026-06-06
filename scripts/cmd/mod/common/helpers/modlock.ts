@@ -1,18 +1,11 @@
 import assert from 'node:assert';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import semver from 'semver';
 import { CACHE, MODLOCK, MODULES, ROOT_NODE } from '../constants.ts';
 import type { Modlock, ModlockNode } from '../types.ts';
 import { parseModuleKey } from './key.ts';
-import { assertModuleName } from './manifest.ts';
+import { assertModuleName, isSemver } from './manifest.ts';
 import { isRecord } from './record.ts';
-
-interface AssertLockNodeOptions {
-  context: string;
-  assertIntegrity?: boolean;
-  assertResolved?: boolean;
-}
 
 const LOCKFILE_VERSION = 1;
 
@@ -50,10 +43,10 @@ export async function writeModlock(modlock: Modlock) {
   );
 }
 
-export function resolveModuleRoot(modlock: Modlock, key: string) {
+export function resolveModuleRoot(key: string, modlock: Modlock) {
   const { dependency, version } = parseModuleKey(key);
 
-  return isRootDependency(dependency, version, modlock.modules)
+  return isRootDependency(dependency, version, modlock)
     ? resolve(MODULES, dependency)
     : resolve(CACHE, key);
 }
@@ -61,9 +54,9 @@ export function resolveModuleRoot(modlock: Modlock, key: string) {
 function isRootDependency(
   dependency: string,
   version: string,
-  modules: Modlock['modules']
+  modlock: Modlock
 ) {
-  return modules[ROOT_NODE]?.dependencies[dependency] === version;
+  return modlock.modules[ROOT_NODE]?.dependencies[dependency] === version;
 }
 
 function assertModlock(value: unknown, path: string): asserts value is Modlock {
@@ -78,13 +71,9 @@ function assertModlock(value: unknown, path: string): asserts value is Modlock {
   const modules = value['modules'];
   assert(isRecord(modules), `${path}: modules must be an object`);
 
-  assertLockNode(modules[ROOT_NODE], {
-    context: `${path}: root module set`
-  });
-
   for (const [key, node] of Object.entries(modules)) {
-    assertLockNode(node, {
-      context: `${path}: ${key || 'root module set'}`,
+    assertModlockNode(node, {
+      context: `${path} [${key || 'root module set'}]`,
       assertIntegrity: true,
       assertResolved: true
     });
@@ -95,17 +84,16 @@ function assertModlock(value: unknown, path: string): asserts value is Modlock {
 
     const { dependency, version } = parseModuleKey(key);
     assertModuleName(dependency);
-    assert(
-      semver.valid(version) === version,
-      `${path}: ${key}: invalid locked version`
-    );
+    assert(isSemver(version), `${path}: ${key}: invalid locked version`);
   }
 }
 
-function assertLockNode(
+function assertModlockNode(
   value: unknown,
-  options: AssertLockNodeOptions = {
-    context: 'invalid modlock node'
+  options = {
+    context: 'invalid modlock node',
+    assertIntegrity: false,
+    assertResolved: false
   }
 ): asserts value is ModlockNode {
   assert(isRecord(value), options.context);
@@ -119,8 +107,8 @@ function assertLockNode(
   for (const [dependency, version] of Object.entries(dependencies)) {
     assertModuleName(dependency);
     assert(
-      typeof version === 'string' && semver.valid(version) === version,
-      `${options.context}: ${dependency}: invalid dependency version`
+      typeof version === 'string' && isSemver(version),
+      `${options.context}: invalid ${dependency} version`
     );
   }
 

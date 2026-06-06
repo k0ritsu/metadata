@@ -8,8 +8,8 @@ import {
   readModlock,
   writeModlock
 } from './common/helpers/modlock.ts';
+import { assertModrc } from './common/helpers/modrc.ts';
 import { exists } from './common/helpers/path.ts';
-import { isRecord } from './common/helpers/record.ts';
 import type { CommandHandler, Modrc } from './common/types.ts';
 
 export const init: CommandHandler = async (args: string[]) => {
@@ -77,21 +77,9 @@ async function writeInitialModlock() {
   const path = resolve(MODULES, MODLOCK);
   if (await exists(path)) {
     await readModlock();
+
     return;
   }
 
   await writeModlock(createEmptyModlock());
-}
-
-function assertModrc(
-  value: unknown,
-  path: string
-): asserts value is Partial<Modrc> {
-  assert(isRecord(value), `${path}: modrc must be an object`);
-
-  const repository = value['repository'];
-  assert(
-    typeof repository === 'string' || typeof repository === 'undefined',
-    `${path}: modrc is corrupted`
-  );
 }
