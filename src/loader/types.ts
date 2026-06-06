@@ -7,7 +7,8 @@ export interface Context {
   logger: Logger;
   modules: Array<
     Omit<ModuleManifest, 'main'> & {
-      main: ModuleMain;
+      main?: ModuleMain | undefined;
+      root: string;
     }
   >;
   store: Store;
@@ -17,9 +18,8 @@ export interface ModuleManifest {
   name: string;
   description: string;
   version: string;
-  enabled?: boolean;
   main?: string;
-  dependencies?: Record<ModuleManifest['name'], ModuleManifest['version']>;
+  dependencies?: Record<string, string>;
 }
 
 export interface ModuleMain {

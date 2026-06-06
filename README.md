@@ -2,9 +2,9 @@
 
 Modular metadata management system built on Node.js and TypeScript.
 
-The application starts an HTTP server, loads enabled root modules from
-`src/modules/*/module.json`, and lets modules register routes through a shared
-runtime context.
+The application starts an HTTP server, loads root modules from
+`src/modules/*/module.json`, and lets runnable modules register routes through a
+shared runtime context.
 
 ## Requirements
 
@@ -115,22 +115,20 @@ Each module is described by a `module.json` file:
   "name": "ping",
   "description": "A simple ping command to check if the api is responsive",
   "version": "1.0.0",
-  "enabled": true,
   "main": "src/main.js",
   "dependencies": {}
 }
 ```
 
 Modules can be library-only or runnable. Library modules only provide code for
-other modules to import. Runnable modules opt in to startup loading with
-`enabled: true` and a `main` entry.
+other modules to import. Runnable modules opt in to startup loading with a
+`main` entry.
 
 Fields:
 
 - `name`: unique module name.
 - `description`: human-readable module description.
 - `version`: module version.
-- `enabled`: only enabled modules with a `main` entry are loaded at runtime.
 - `main`: module entrypoint. Use a `.js` specifier even when the source file is
   TypeScript, for example `src/main.js` for `src/main.ts`.
 - `dependencies`: optional map of module names to versions or ranges.

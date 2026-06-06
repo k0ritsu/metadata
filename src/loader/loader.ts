@@ -1,15 +1,11 @@
 import { glob, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import type { ModuleMain, ModuleManifest } from './types.js';
+import type { Context, ModuleMain, ModuleManifest } from './types.js';
 
 const MODULE = 'module.json';
 
 export async function loadModules() {
-  const modules: Array<
-    Omit<ModuleManifest, 'main'> & {
-      main: ModuleMain;
-    }
-  > = [];
+  const modules: Context['modules'] = [];
 
   const entry = process.argv[1];
   if (!entry) {
@@ -28,15 +24,18 @@ export async function loadModules() {
       })
     );
 
-    if (manifest.enabled && manifest.main) {
-      const path = resolve(dirent.parentPath, manifest.main);
-      const main: ModuleMain = await import(path);
+    let main: ModuleMain | undefined = undefined;
 
-      modules.push({
-        ...manifest,
-        main
-      });
+    if (manifest.main) {
+      const path = resolve(dirent.parentPath, manifest.main);
+      main = await import(path);
     }
+
+    modules.push({
+      ...manifest,
+      main,
+      root: dirent.parentPath
+    });
   }
 
   return modules;

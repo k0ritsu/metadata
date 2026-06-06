@@ -46,7 +46,7 @@ export async function bootstrap(config: Config): Promise<Shutdown> {
     modules.map((module) => {
       logger.info(`Registering module ${module.name}@${module.version}`);
 
-      return module.main.register({
+      return module.main?.register({
         router,
         logger,
         modules,

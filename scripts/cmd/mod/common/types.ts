@@ -6,7 +6,6 @@ export interface ModuleManifest {
   name: string;
   description: string;
   version: string;
-  enabled?: boolean;
   main?: string;
   dependencies?: Record<string, string>;
 }
