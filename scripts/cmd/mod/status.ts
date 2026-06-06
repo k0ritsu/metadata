@@ -42,8 +42,6 @@ export const status: CommandHandler = async () => {
         status: 'missing-integrity'
       });
 
-      failed = true;
-
       continue;
     }
 

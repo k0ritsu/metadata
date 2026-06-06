@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { CACHE, MODLOCK, MODULES, ROOT_NODE } from '../constants.ts';
-import type { Modlock, ModlockNode } from '../types.ts';
+import type { Modlock, ModlockNode, ModuleMetadata } from '../types.ts';
 import { parseModuleKey } from './key.ts';
 import { assertModuleName, isSemver } from './manifest.ts';
 import { exists } from './path.ts';
@@ -46,25 +46,9 @@ export async function readOrCreateModlock(): Promise<Modlock> {
 export async function writeModlock(modlock: Modlock): Promise<void> {
   assertModlock(modlock, MODLOCK);
 
-  if (modlock.modules[ROOT_NODE]) {
-    modlock.modules[ROOT_NODE].dependencies = Object.fromEntries(
-      Object.entries(modlock.modules[ROOT_NODE].dependencies).sort(
-        ([left], [right]) => {
-          return left.localeCompare(right);
-        }
-      )
-    );
-  }
-
-  modlock.modules = Object.fromEntries(
-    Object.entries(modlock.modules).sort(([left], [right]) => {
-      return left.localeCompare(right);
-    })
-  );
-
   await writeFile(
     resolve(MODULES, MODLOCK),
-    JSON.stringify(modlock, undefined, 2)
+    JSON.stringify(sortModlock(modlock), undefined, 2)
   );
 }
 
@@ -76,12 +60,48 @@ export function resolveModuleRoot(key: string, modlock: Modlock): string {
     : resolve(CACHE, key);
 }
 
+export function copyModuleMetadata(node?: ModlockNode): ModuleMetadata {
+  const metadata: ModuleMetadata = {};
+
+  if (node?.integrity !== undefined) {
+    metadata.integrity = node.integrity;
+  }
+
+  if (node?.resolved !== undefined) {
+    metadata.resolved = node.resolved;
+  }
+
+  return metadata;
+}
+
 function isRootDependency(
   dependency: string,
   version: string,
   modlock: Modlock
 ): boolean {
   return modlock.modules[ROOT_NODE]?.dependencies[dependency] === version;
+}
+
+function sortModlock(modlock: Modlock): Modlock {
+  return {
+    lockfileVersion: modlock.lockfileVersion,
+    modules: Object.fromEntries(
+      Object.entries(modlock.modules)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, node]) => [key, sortModlockNode(node)])
+    )
+  };
+}
+
+function sortModlockNode(node: ModlockNode): ModlockNode {
+  return {
+    dependencies: Object.fromEntries(
+      Object.entries(node.dependencies).sort(([left], [right]) =>
+        left.localeCompare(right)
+      )
+    ),
+    ...copyModuleMetadata(node)
+  };
 }
 
 function assertModlock(value: unknown, path: string): asserts value is Modlock {

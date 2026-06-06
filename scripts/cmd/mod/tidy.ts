@@ -6,6 +6,7 @@ import { CACHE, MODULE, MODULES, ROOT_NODE } from './common/constants.ts';
 import { createModuleKey } from './common/helpers/key.ts';
 import { readModuleManifest } from './common/helpers/manifest.ts';
 import {
+  copyModuleMetadata,
   createEmptyModlock,
   readOrCreateModlock,
   resolveModuleRoot,
@@ -31,8 +32,6 @@ interface ModuleRegistry {
   cacheByKey: Map<string, ModuleDescriptor>;
   cacheByName: Map<string, ModuleDescriptor[]>;
 }
-
-interface ModuleMetadata extends Pick<ModlockNode, 'integrity' | 'resolved'> {}
 
 export const tidy: CommandHandler = async () => {
   const [registry, existing] = await Promise.all([
@@ -127,7 +126,7 @@ async function resolveModule(
 
   modlock.modules[manifest.key] = {
     dependencies,
-    ...copyMetadata(existing.modules[manifest.key])
+    ...copyModuleMetadata(existing.modules[manifest.key])
   };
 }
 
@@ -193,20 +192,6 @@ async function loadCachedModulesByName(
   registry.cacheByName.set(dependency, roots);
 
   return roots;
-}
-
-function copyMetadata(node?: ModlockNode): ModuleMetadata {
-  const metadata: ModuleMetadata = {};
-
-  if (node?.integrity !== undefined) {
-    metadata.integrity = node.integrity;
-  }
-
-  if (node?.resolved !== undefined) {
-    metadata.resolved = node.resolved;
-  }
-
-  return metadata;
 }
 
 async function cleanCache(modlock: Modlock): Promise<void> {

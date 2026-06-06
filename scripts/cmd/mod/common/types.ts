@@ -16,10 +16,13 @@ export interface Modlock {
   modules: Record<string, ModlockNode>;
 }
 
-export interface ModlockNode {
-  dependencies: Record<string, string>;
+export interface ModuleMetadata {
   integrity?: string;
   resolved?: string;
+}
+
+export interface ModlockNode extends ModuleMetadata {
+  dependencies: Record<string, string>;
 }
 
 export interface Modrc {
