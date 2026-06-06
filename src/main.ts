@@ -1,6 +1,6 @@
 import { bootstrap } from './application.js';
 import { loadConfig } from './config/config.js';
-import { gracefulShutdown } from './graceful-shutdown.js';
+import { gracefulShutdown } from './graceful-shutdown/graceful-shutdown.js';
 
 const config = loadConfig();
 

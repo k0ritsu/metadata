@@ -1,16 +1,21 @@
 import cluster from 'node:cluster';
 import process from 'node:process';
+import type { Shutdown } from './graceful-shutdown/types.js';
+
+interface CreateWorker {
+  (): Promise<{
+    shutdown: Shutdown;
+  }>;
+}
 
 interface Config {
   parallelism: number;
 }
 
 export async function createCluster(
-  createWorker: () => Promise<{
-    shutdown(): Promise<void>;
-  }>,
+  createWorker: CreateWorker,
   config: Config
-) {
+): Promise<Shutdown | undefined> {
   if (cluster.isPrimary) {
     for (let i = 0; i < config.parallelism; i++) {
       cluster.fork(process.env);

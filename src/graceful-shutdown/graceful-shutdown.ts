@@ -1,5 +1,6 @@
 import process from 'node:process';
-import { DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT } from './constants.js';
+import { DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT } from '../constants.js';
+import type { Shutdown } from './types.js';
 
 class GracefulShutdownTimeout extends Error {
   constructor(timeout: number) {
@@ -12,11 +13,11 @@ interface Config {
 }
 
 export function gracefulShutdown(
-  shutdown?: () => Promise<void>,
+  shutdown?: Shutdown,
   config: Config = {
     timeout: DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT
   }
-) {
+): void {
   const { timeout } = config;
 
   let isShuttingDown = false;

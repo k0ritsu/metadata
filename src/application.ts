@@ -1,13 +1,14 @@
 // @ts-expect-error Added in Node.js, pending @types/node support (expected in 24.16)
 import { randomUUIDv7 } from 'node:crypto';
 import type { Config } from './config/types.js';
+import type { Shutdown } from './graceful-shutdown/types.js';
 import { loadModules } from './loader/loader.js';
 import { createJsonHandler, createLogger } from './logger/logger.js';
 import { createRouter } from './router/router.js';
 import { createServer } from './server.js';
 import { createStore } from './store/store.js';
 
-export async function bootstrap(config: Config) {
+export async function bootstrap(config: Config): Promise<Shutdown> {
   const logger = createLogger(
     createJsonHandler({
       level: config.LOG_LEVEL

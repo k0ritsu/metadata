@@ -10,14 +10,18 @@ import { fileURLToPath } from 'node:url';
 
 export interface Modlock {
   lockfileVersion: number;
-  modules: Record<
-    string,
-    {
-      dependencies: Record<string, string>;
-      integrity?: string;
-      resolved?: string;
-    }
-  >;
+  modules: Record<string, ModlockNode>;
+}
+
+interface ModlockNode {
+  dependencies: Record<string, string>;
+  integrity?: string;
+  resolved?: string;
+}
+
+interface ModuleAlias {
+  dependency: string;
+  path: string;
 }
 
 const NODE_MODULES = join(cwd(), 'node_modules');
@@ -58,7 +62,7 @@ export const load: LoadHook = (url, context, nextLoad) => {
 function resolveModuleSpecifier(
   specifier: string,
   context: ResolveHookContext
-) {
+): string {
   const alias = parseModuleAlias(specifier);
   if (!alias) {
     return specifier;
@@ -77,7 +81,7 @@ function resolveModuleSpecifier(
   return join(dependencyRoot, alias.path);
 }
 
-function parseModuleAlias(specifier: string) {
+function parseModuleAlias(specifier: string): ModuleAlias | undefined {
   if (specifier.startsWith(MODULES_ALIAS)) {
     specifier = specifier.slice(MODULES_ALIAS.length);
   } else {
@@ -95,7 +99,10 @@ function parseModuleAlias(specifier: string) {
   };
 }
 
-function getImporterKey(context: ResolveHookContext, specifier: string) {
+function getImporterKey(
+  context: ResolveHookContext,
+  specifier: string
+): string {
   const parentPath = getParentPath(context);
   if (!parentPath) {
     throw new Error(`cannot resolve "${specifier}" without a file parent URL`);
@@ -121,11 +128,11 @@ function getImporterKey(context: ResolveHookContext, specifier: string) {
   return createModuleKey(root, getDependencyVersion(ROOT_NODE, root));
 }
 
-function createModuleKey(dependency: string, version: string) {
+function createModuleKey(dependency: string, version: string): string {
   return `${dependency}@${version}`;
 }
 
-function getDependencyVersion(module: string, dependency: string) {
+function getDependencyVersion(module: string, dependency: string): string {
   const node = assertModlockNode(module);
 
   const version = node.dependencies[dependency];
@@ -138,7 +145,7 @@ function getDependencyVersion(module: string, dependency: string) {
   return version;
 }
 
-function assertModlockNode(module: string) {
+function assertModlockNode(module: string): ModlockNode {
   const node = modules[module];
   if (!node) {
     throw new Error(`${module || 'root module set'} is missing`);
@@ -153,17 +160,17 @@ function resolveDependencyRoot(
   options: {
     module: string;
   }
-) {
+): string {
   return isRootDependency(dependency, version)
     ? join(MODULES, dependency)
     : join(CACHE, options.module);
 }
 
-function isRootDependency(dependency: string, version: string) {
+function isRootDependency(dependency: string, version: string): boolean {
   return modules[ROOT_NODE]?.dependencies[dependency] === version;
 }
 
-function isInsidePath(context: ResolveHookContext, root: string) {
+function isInsidePath(context: ResolveHookContext, root: string): boolean {
   const parentPath = getParentPath(context);
   if (!parentPath) {
     return false;
@@ -178,7 +185,7 @@ function isInsidePath(context: ResolveHookContext, root: string) {
   );
 }
 
-function getParentPath(context: ResolveHookContext) {
+function getParentPath(context: ResolveHookContext): string | undefined {
   const { parentURL } = context;
   if (parentURL?.startsWith('file:')) {
     return fileURLToPath(parentURL);
