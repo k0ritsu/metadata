@@ -49,6 +49,7 @@ export function createRouter(config: Config, logger: Logger) {
             new Request(
               new URL(String(req.url), `http://localhost:${config.HTTP_PORT}`),
               {
+                duplex: 'half',
                 method,
                 headers: transformHeaders(req.headers),
                 body: extractBody(req)
@@ -96,7 +97,7 @@ export function createRouter(config: Config, logger: Logger) {
 
 function extractBody(req: IncomingMessage): Readable | null {
   if (
-    req.headers['content-length'] !== undefined &&
+    req.headers['content-length'] !== undefined ||
     req.headers['transfer-encoding'] !== undefined
   ) {
     return Readable.from(req);
