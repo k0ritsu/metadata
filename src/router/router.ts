@@ -75,7 +75,7 @@ export function createRouter(config: Config, logger: Logger) {
                 .writeHead(err.status, {
                   'content-type': 'application/problem+json'
                 })
-                .end(JSON.stringify(err));
+                  .end(JSON.stringify(err.withInstance(req.url)));
           }
 
           logger.error(String(err));

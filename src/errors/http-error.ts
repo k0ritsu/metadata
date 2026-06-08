@@ -21,6 +21,10 @@ export class HttpError extends Error {
     this.instance = instance;
   }
 
+  withInstance(instance = '/') {
+    new HttpError(this.type, this.status, this.title, this.detail, instance);
+  }
+
   toJSON() {
     return {
       type: this.type,
