@@ -22,7 +22,13 @@ export class HttpError extends Error {
   }
 
   withInstance(instance = '/') {
-    new HttpError(this.type, this.status, this.title, this.detail, instance);
+    return new HttpError(
+      this.type,
+      this.status,
+      this.title,
+      this.detail,
+      instance
+    );
   }
 
   toJSON() {
