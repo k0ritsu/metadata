@@ -1,5 +1,4 @@
-// @ts-expect-error Added in Node.js, pending @types/node support (expected in 24.16)
-import { randomUUIDv7 } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { Config } from './config/types.js';
 import type { Shutdown } from './graceful-shutdown/types.js';
 import { loadModules } from './loader/loader.js';
@@ -22,7 +21,7 @@ export async function bootstrap(config: Config): Promise<Shutdown> {
     (req, res, ctx, done) => {
       let requestId = req.headers['x-request-id'];
       if (typeof requestId !== 'string') {
-        requestId = randomUUIDv7();
+        requestId = randomUUID();
       }
 
       return store.run(
