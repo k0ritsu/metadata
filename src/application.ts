@@ -37,9 +37,7 @@ export async function bootstrap(config: Config): Promise<Shutdown> {
     }
   );
 
-  logger.info(
-    `Starting ${config.APP_NAME}@${config.APP_VERSION} on port ${config.HTTP_PORT}`
-  );
+  logger.info(`Starting ${config.APP_NAME}@${config.APP_VERSION} on port ${config.HTTP_PORT}`);
 
   const modules = await loadModules();
   const hooks = await Promise.all(
@@ -62,9 +60,6 @@ export async function bootstrap(config: Config): Promise<Shutdown> {
       resolver.resolve();
     });
 
-    await Promise.all([
-      resolver.promise,
-      ...hooks.map(({ shutdown } = {}) => shutdown?.())
-    ]);
+    await Promise.all([resolver.promise, ...hooks.map(({ shutdown } = {}) => shutdown?.())]);
   };
 }

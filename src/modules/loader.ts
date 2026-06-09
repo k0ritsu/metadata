@@ -1,9 +1,4 @@
-import type {
-  InitializeHook,
-  LoadHook,
-  ResolveHook,
-  ResolveHookContext
-} from 'node:module';
+import type { InitializeHook, LoadHook, ResolveHook, ResolveHookContext } from 'node:module';
 import { extname, isAbsolute, join, relative, sep } from 'node:path';
 import { cwd } from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -64,10 +59,7 @@ export const load: LoadHook = (url, context, nextLoad) => {
   return nextLoad(url, context);
 };
 
-function resolveCoreSpecifier(
-  specifier: string,
-  fallback: () => string
-): string {
+function resolveCoreSpecifier(specifier: string, fallback: () => string): string {
   if (!specifier.startsWith(CORE_ALIAS)) {
     return fallback();
   }
@@ -80,10 +72,7 @@ function resolveCoreSpecifier(
   return join(SOURCE, path);
 }
 
-function resolveModuleSpecifier(
-  specifier: string,
-  context: ResolveHookContext
-): string {
+function resolveModuleSpecifier(specifier: string, context: ResolveHookContext): string {
   const alias = parseModuleAlias(specifier);
   if (!alias) {
     return specifier;
@@ -120,10 +109,7 @@ function parseModuleAlias(specifier: string): ModuleAlias | undefined {
   };
 }
 
-function getImporterKey(
-  context: ResolveHookContext,
-  specifier: string
-): string {
+function getImporterKey(context: ResolveHookContext, specifier: string): string {
   const parentPath = getParentPath(context);
   if (!parentPath) {
     throw new Error(`cannot resolve "${specifier}" without a file parent URL`);
@@ -158,9 +144,7 @@ function getDependencyVersion(module: string, dependency: string): string {
 
   const version = node.dependencies[dependency];
   if (!version) {
-    throw new Error(
-      `${module || 'root module set'} does not depend on ${dependency}`
-    );
+    throw new Error(`${module || 'root module set'} does not depend on ${dependency}`);
   }
 
   return version;
@@ -199,11 +183,7 @@ function isInsidePath(context: ResolveHookContext, root: string): boolean {
 
   const relativePath = relative(root, parentPath);
 
-  return (
-    relativePath !== '' &&
-    !relativePath.startsWith('..') &&
-    !isAbsolute(relativePath)
-  );
+  return relativePath !== '' && !relativePath.startsWith('..') && !isAbsolute(relativePath);
 }
 
 function getParentPath(context: ResolveHookContext): string | undefined {

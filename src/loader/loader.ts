@@ -12,12 +12,9 @@ export async function loadModules() {
     return modules;
   }
 
-  for await (const dirent of glob(
-    resolve(dirname(entry), 'modules', '*', MODULE),
-    {
-      withFileTypes: true
-    }
-  )) {
+  for await (const dirent of glob(resolve(dirname(entry), 'modules', '*', MODULE), {
+    withFileTypes: true
+  })) {
     const manifest: ModuleManifest = JSON.parse(
       await readFile(resolve(dirent.parentPath, dirent.name), {
         encoding: 'utf8'

@@ -5,13 +5,7 @@ export class HttpError extends Error {
   readonly detail: string;
   readonly instance: string;
 
-  constructor(
-    type: string,
-    status: number,
-    title: string,
-    detail: string,
-    instance: string
-  ) {
+  constructor(type: string, status: number, title: string, detail: string, instance: string) {
     super(`${status} ${title}: ${detail}`);
 
     this.type = type;
@@ -22,13 +16,7 @@ export class HttpError extends Error {
   }
 
   withInstance(instance = '/') {
-    return new HttpError(
-      this.type,
-      this.status,
-      this.title,
-      this.detail,
-      instance
-    );
+    return new HttpError(this.type, this.status, this.title, this.detail, instance);
   }
 
   toJSON() {

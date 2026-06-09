@@ -11,12 +11,7 @@ const Config = Type.Object({
     default: true
   }),
   LOG_LEVEL: Type.Union(
-    [
-      Type.Literal('debug'),
-      Type.Literal('info'),
-      Type.Literal('warn'),
-      Type.Literal('error')
-    ],
+    [Type.Literal('debug'), Type.Literal('info'), Type.Literal('warn'), Type.Literal('error')],
     {
       default: 'info'
     }
