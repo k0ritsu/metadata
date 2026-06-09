@@ -7,8 +7,8 @@
     "prebuild": "node scripts/mod.ts tidy",
     "build": "tsc -b tsconfig.build.json",
     "postbuild": "node scripts/mod.ts build",
-    "dev": "node --watch --env-file .env --import ./src/modules/import.ts src/main.ts",
-    "test": "node --test"
+    "dev": "node --import ./src/modules/import.ts --watch --env-file .env src/main.ts",
+    "test": "node --import ./src/modules/import.ts --test"
   },
   "bin": {
     "mod": "scripts/mod.ts"
