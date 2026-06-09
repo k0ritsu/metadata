@@ -2,9 +2,8 @@
 
 Modular metadata management system built on Node.js and TypeScript.
 
-The application starts an HTTP server, loads root modules from
-`src/modules/*/module.json`, and lets runnable modules register routes through a
-shared runtime context.
+The application starts an HTTP server, loads root modules from `src/modules/*/module.json`, and lets
+runnable modules register routes through a shared runtime context.
 
 ## Requirements
 
@@ -44,9 +43,8 @@ Run the application in watch mode:
 npm run dev
 ```
 
-The development command loads `.env` and registers the module loader from
-`src/modules/import.ts`, so module imports can use the same `.js` specifiers
-that are emitted for production builds.
+The development command loads `.env` and registers the module loader from `src/modules/import.ts`,
+so module imports can use the same `.js` specifiers that are emitted for production builds.
 
 Check the server:
 
@@ -62,10 +60,9 @@ Build the project:
 npm run build
 ```
 
-The build script compiles the root project and every generated module
-`tsconfig.json`. It also runs the module build step, which copies each
-`module.json` file into `dist/modules` and keeps runtime `main` entries using
-`.js` extensions.
+The build script compiles the root project and every generated module `tsconfig.json`. It also runs
+the module build step, which copies each `module.json` file into `dist/modules` and keeps runtime
+`main` entries using `.js` extensions.
 
 Start the compiled application:
 
@@ -101,8 +98,8 @@ The version authority is:
 src/modules/modlock.json
 ```
 
-Root modules are listed in `modlock.modules[""].dependencies`. Every concrete
-module version has a flat lockfile key:
+Root modules are listed in `modlock.modules[""].dependencies`. Every concrete module version has a
+flat lockfile key:
 
 ```text
 <module>@<version>
@@ -120,17 +117,16 @@ Each module is described by a `module.json` file:
 }
 ```
 
-Modules can be library-only or runnable. Library modules only provide code for
-other modules to import. Runnable modules opt in to startup loading with a
-`main` entry.
+Modules can be library-only or runnable. Library modules only provide code for other modules to
+import. Runnable modules opt in to startup loading with a `main` entry.
 
 Fields:
 
 - `name`: unique module name.
 - `description`: human-readable module description.
 - `version`: module version.
-- `main`: module entrypoint. Use a `.js` specifier even when the source file is
-  TypeScript, for example `src/main.js` for `src/main.ts`.
+- `main`: module entrypoint. Use a `.js` specifier even when the source file is TypeScript, for
+  example `src/main.js` for `src/main.ts`.
 - `dependencies`: optional map of module names to versions or ranges.
 
 A module entrypoint exports an async `register` function:
@@ -162,9 +158,9 @@ Module imports use the `#modules/` prefix:
 import { wrapper } from '#modules/metadata-http/src/wrapper.js';
 ```
 
-Runtime resolution and generated TypeScript path mappings must resolve the same
-module/version for every importer. If a root module provides the exact
-dependency version, root wins. Otherwise the dependency resolves from `.cache`.
+Runtime resolution and generated TypeScript path mappings must resolve the same module/version for
+every importer. If a root module provides the exact dependency version, root wins. Otherwise the
+dependency resolves from `.cache`.
 
 Full module documentation starts at [Module System](docs/module-resolution.md).
 
@@ -190,8 +186,8 @@ Create a new editable root module:
 node scripts/mod.ts create <module>
 ```
 
-Install root modules from the repository, or install everything from the
-lockfile when no module names are passed:
+Install root modules from the repository, or install everything from the lockfile when no module
+names are passed:
 
 ```bash
 node scripts/mod.ts install <module[@version]>...
@@ -237,11 +233,9 @@ Module commands maintain generated metadata:
 - `src/modules/modlock.json`: flat module dependency lockfile.
 - `src/modules/modrc.json`: module repository configuration.
 - `src/modules/**/tsconfig.json`: generated per-module TypeScript projects.
-- `tsconfig.build.json`: generated build references for the root project and
-  modules.
+- `tsconfig.build.json`: generated build references for the root project and modules.
 
-Regenerate lockfile and TypeScript references after changing module dependencies
-on disk:
+Regenerate lockfile and TypeScript references after changing module dependencies on disk:
 
 ```bash
 node scripts/mod.ts tidy
