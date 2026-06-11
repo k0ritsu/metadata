@@ -8,6 +8,8 @@ import { InternalServerError } from '../errors/internal-server-error.js';
 import { NotFound } from '../errors/not-found.js';
 import type { Logger } from '../logger/types.js';
 
+class RouterError extends Error {}
+
 type HttpMethod =
   | 'GET'
   | 'HEAD'
@@ -27,18 +29,19 @@ interface HttpHandler {
   ): Promise<Response>;
 }
 
-interface HttpNext {
-  (): Promise<Response>;
-}
-
 interface HttpMiddleware {
-  (...args: [...Parameters<HttpHandler>, next: HttpNext]): Promise<Response>;
+  (
+    req: Request,
+    params: Record<string, string | undefined>,
+    searchParams: URLSearchParams,
+    next: () => Promise<Response>
+  ): Promise<Response>;
 }
 
-export interface RouterGroup {
-  use(middleware: HttpMiddleware): void;
+interface RouterGroup {
   route(method: HttpMethod, path: string, handler: HttpHandler): void;
   group(prefix: string, callback: (router: RouterGroup) => void): void;
+  use(middleware: HttpMiddleware): void;
 }
 
 export function createRouter(config: Config, logger: Logger) {
@@ -47,7 +50,7 @@ export function createRouter(config: Config, logger: Logger) {
       const err = new NotFound(undefined, undefined, req.url);
 
       return res
-        .writeHead(err.status, {
+        .writeHead(err.status, err.title, {
           'content-type': 'application/problem+json'
         })
         .end(JSON.stringify(err));
@@ -56,9 +59,6 @@ export function createRouter(config: Config, logger: Logger) {
 
   function createRouterGroup(prefix = '', middlewares: HttpMiddleware[] = []) {
     return {
-      use(middleware: HttpMiddleware) {
-        middlewares.push(middleware);
-      },
       route(method: HttpMethod, path: string, handler: HttpHandler) {
         path = normalizePath(prefix, path);
         handler = composeMiddleware([...middlewares], handler);
@@ -89,7 +89,7 @@ export function createRouter(config: Config, logger: Logger) {
             switch (true) {
               case err instanceof HttpError:
                 return res
-                  .writeHead(err.status, {
+                  .writeHead(err.status, err.title, {
                     'content-type': 'application/problem+json'
                   })
                   .end(JSON.stringify(err.withInstance(req.url)));
@@ -101,7 +101,7 @@ export function createRouter(config: Config, logger: Logger) {
               const err = new InternalServerError(undefined, undefined, req.url);
 
               return res
-                .writeHead(err.status, {
+                .writeHead(err.status, err.title, {
                   'content-type': 'application/problem+json'
                 })
                 .end(JSON.stringify(err));
@@ -113,6 +113,9 @@ export function createRouter(config: Config, logger: Logger) {
         path = normalizePath(prefix, path);
 
         callback(createRouterGroup(path, [...middlewares]));
+      },
+      use(middleware: HttpMiddleware) {
+        middlewares.push(middleware);
       }
     };
   }
@@ -129,12 +132,12 @@ function composeMiddleware(middlewares: HttpMiddleware[], handler: HttpHandler) 
     params: Record<string, string | undefined>,
     searchParams: URLSearchParams
   ) => {
-    const dispatch = async (
+    async function dispatch(
       index: number,
       req: Request,
       params: Record<string, string | undefined>,
       searchParams: URLSearchParams
-    ): Promise<Response> => {
+    ): Promise<Response> {
       const middleware = middlewares[index];
       if (!middleware) {
         return handler(req, params, searchParams);
@@ -144,14 +147,14 @@ function composeMiddleware(middlewares: HttpMiddleware[], handler: HttpHandler) 
 
       return middleware(req, params, searchParams, () => {
         if (nextCalled) {
-          throw new Error('next() called multiple times');
+          throw new RouterError('next() called multiple times');
         }
 
         nextCalled = true;
 
         return dispatch(index + 1, req, params, searchParams);
       });
-    };
+    }
 
     return dispatch(0, req, params, searchParams);
   };
@@ -165,14 +168,22 @@ function normalizePath(...paths: string[]) {
 }
 
 function extractBody(req: IncomingMessage) {
-  if (
-    req.headers['content-length'] !== undefined ||
-    req.headers['transfer-encoding'] !== undefined
-  ) {
+  if (hasBody(req)) {
     return Readable.from(req);
   }
 
   return null;
+}
+
+function hasBody(req: IncomingMessage) {
+  const { method, headers } = req;
+  switch (method) {
+    case 'HEAD':
+    case 'GET':
+      return false;
+  }
+
+  return headers['content-length'] !== undefined || headers['transfer-encoding'] !== undefined;
 }
 
 function extractHeaders(req: IncomingMessage) {
