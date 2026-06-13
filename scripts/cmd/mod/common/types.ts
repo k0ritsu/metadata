@@ -1,7 +1,3 @@
-export interface CommandHandler {
-  (args: string[]): Promise<void>;
-}
-
 export interface ModuleManifest {
   name: string;
   description: string;

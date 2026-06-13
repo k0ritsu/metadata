@@ -194,16 +194,11 @@ node scripts/mod.ts install <module[@version]>...
 node scripts/mod.ts install
 ```
 
-Rebuild the lockfile from root modules and reachable cached dependencies:
+Rebuild the lockfile from root modules and reachable cached dependencies, then regenerate TypeScript
+configs:
 
 ```bash
 node scripts/mod.ts tidy
-```
-
-Show root modules whose current files differ from locked integrity:
-
-```bash
-node scripts/mod.ts status
 ```
 
 Remove editable root modules and clean unused cache dependencies:
@@ -224,7 +219,7 @@ Copy module manifests into the build output:
 node scripts/mod.ts build
 ```
 
-Command behavior is specified in [Module Commands](docs/mod/cmd/README.md).
+Command behavior is documented in [Module System](docs/module-resolution.md).
 
 ## Generated Files
 

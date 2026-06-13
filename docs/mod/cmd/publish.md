@@ -16,9 +16,8 @@ src/modules/<module>
 
 The command requires exactly one module name.
 
-Cached dependencies cannot be published directly. If a cached dependency needs
-local changes, it must first be promoted to root with `mod install` or another
-root-level workflow.
+Cached dependencies cannot be published directly. If a cached dependency needs local changes, it
+must first be promoted to root with `mod install` or another root-level workflow.
 
 ## Published Version
 
@@ -34,12 +33,20 @@ The module key is:
 <name>@<version>
 ```
 
-If that version already exists in the repository, publish fails. Published
-versions are immutable.
+If that version already exists in the repository, publish fails. Published versions are immutable.
 
 ## Artifact
 
-`publish` packages the module directory and uploads it to the repository.
+Before packaging or uploading, `publish` validates local state:
+
+- the module exists as a root module in `modlock.json`;
+- `<module>@<version>` exists in `modlock.json`;
+- the dependency graph in `modlock.json` matches what `mod tidy` would produce.
+
+If the graph is stale, run `mod tidy` before publishing.
+
+`publish` packages the module directory and uploads it to the repository only after local preflight
+succeeds.
 
 Generated files are not part of the artifact:
 
@@ -57,8 +64,7 @@ The same file set is used for `integrity`.
 
 ## Lockfile Updates
 
-After a successful upload, `publish` updates the module entry in
-`src/modules/modlock.json`.
+After a successful upload, `publish` updates the module entry in `src/modules/modlock.json`.
 
 It records:
 
@@ -73,16 +79,20 @@ It records:
 
 `resolved` is the repository URL returned by the publish API.
 
-Dependency edges are not recalculated by publish. If dependencies changed, run
-`mod tidy` before publishing.
+Dependency edges are not recalculated by publish. If dependencies changed, run `mod tidy` before
+publishing.
 
-## Status After Publish
+If the repository upload succeeds but the local lockfile update fails, the command prints the
+returned archive URL and a recovery note. Record that URL manually, or rerun `mod publish <module>`
+only when the repository accepts idempotent same-version publishes.
 
-Publishing local changes makes the current module artifact the new locked
-target.
+## Integrity After Publish
 
-After a successful publish, `mod status` should not report an integrity
-difference for that module unless files are changed again.
+Publishing local changes makes the uploaded module artifact the new locked target.
+
+After a successful publish, the module entry in `modlock.json` stores the integrity computed from
+that artifact. Later local edits do not update the lockfile until the module is published or
+installed again.
 
 ## Does Not
 

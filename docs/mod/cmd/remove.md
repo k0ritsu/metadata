@@ -16,8 +16,8 @@ The command requires one or more module names.
 src/modules/<module>
 ```
 
-It must not be used to remove cache modules directly. Cache cleanup is derived
-from the dependency graph after root modules are removed.
+It must not be used to remove cache modules directly. Cache cleanup is derived from the dependency
+graph after root modules are removed.
 
 ## Root Removal
 
@@ -31,8 +31,8 @@ If a requested module is not installed as a root module, the command fails.
 
 ## Still Needed By Other Modules
 
-If the removed root module is still required by another reachable root module,
-the same module version must remain available as a cached dependency.
+If the removed root module is still required by another reachable root module, the same module
+version must remain available as a cached dependency.
 
 Example:
 
@@ -47,20 +47,26 @@ After:
 mod remove lib
 ```
 
-`lib@1.0.0` is no longer editable root state, but it is still required by `app`,
-so it is installed in cache:
+`lib@1.0.0` is no longer editable root state, but it is still required by `app`, so it is installed
+in cache:
 
 ```text
 src/modules/.cache/lib@1.0.0
 ```
 
-If that cache directory already exists, the root copy is deleted and the cache
-copy is kept.
+If that cache directory already exists, the root copy is deleted and the cache copy is kept only
+when the root module still matches the lockfile integrity.
+
+If the root copy has local changes, `remove` fails instead of silently keeping an older cache
+artifact over unpublished work. Publish, reinstall, or manually resolve the local copy first.
+
+When a removed module must be preserved in cache and the lockfile has no `integrity` for that
+module, `remove` can only copy the root module if the destination cache directory does not already
+exist.
 
 ## No Longer Needed
 
-If the removed module is not required by any remaining root module, it is
-deleted completely:
+If the removed module is not required by any remaining root module, it is deleted completely:
 
 ```text
 src/modules/<module>
@@ -70,20 +76,19 @@ No cache copy is created.
 
 ## Dependency Cleanup
 
-After root modules are removed, `remove` recalculates the reachable dependency
-graph using the same rules as `tidy`.
+After root modules are removed, `remove` recalculates the reachable dependency graph using the same
+rules as `tidy`.
 
 It physically deletes cache module directories that are no longer reachable.
 
-It also removes duplicate cache entries when the exact same module/version is
-provided by a remaining root module.
+It also removes duplicate cache entries when the exact same module/version is provided by a
+remaining root module.
 
 Root module directories that were not explicitly requested are never deleted.
 
 ## Lockfile Updates
 
-After cleanup, `remove` writes a flat `modlock.json` containing only reachable
-modules.
+After cleanup, `remove` writes a flat `modlock.json` containing only reachable modules.
 
 The root set no longer contains removed modules:
 
@@ -106,8 +111,7 @@ For module keys that survive, `remove` preserves:
 
 ## TypeScript Configs
 
-`remove` regenerates TypeScript configs after the lockfile and disk layout are
-updated.
+`remove` regenerates TypeScript configs after the lockfile and disk layout are updated.
 
 Generated paths must match runtime loader resolution exactly.
 
@@ -120,3 +124,5 @@ Generated paths must match runtime loader resolution exactly.
 - a surviving dependency range cannot be satisfied by root or cache;
 - a dependency cycle is detected;
 - a module that must be moved to cache cannot be copied safely.
+- a root module has local changes and removal would preserve or prefer a cache artifact for the same
+  module version.

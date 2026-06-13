@@ -6,13 +6,9 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 
 function runCreate(root: string, name: string) {
-  execFileSync(
-    process.execPath,
-    [resolve('scripts', 'mod.ts'), 'create', name],
-    {
-      cwd: root
-    }
-  );
+  execFileSync(process.execPath, [resolve('scripts', 'mod.ts'), 'create', name], {
+    cwd: root
+  });
 }
 
 function readJson(path: string) {
@@ -53,8 +49,5 @@ test('create adds a root module, lock entry, and tsconfig', () => {
       path: './src/modules/app/tsconfig.json'
     }
   ]);
-  assert.equal(
-    readJson(join(modules, 'app', 'tsconfig.json')).compilerOptions.rootDir,
-    '.'
-  );
+  assert.equal(readJson(join(modules, 'app', 'tsconfig.json')).compilerOptions.rootDir, '.');
 });

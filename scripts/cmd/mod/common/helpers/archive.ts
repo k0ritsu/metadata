@@ -1,4 +1,3 @@
-import assert from 'node:assert/strict';
 import { isAbsolute } from 'node:path';
 import { promisify } from 'node:util';
 import { gunzip, gzip } from 'node:zlib';
@@ -9,26 +8,21 @@ const gunzipAsync = promisify(gunzip);
 
 const BLOCK_SIZE = 512;
 
+class TarError extends Error {}
+
 export interface TarFile {
   content: Buffer;
   path: string;
   executable: boolean;
 }
 
-interface TarEntry {
-  content: Buffer;
-  path: string;
-  mode: number;
-}
-
-interface TarPath {
-  name: string;
-  prefix: string;
-}
-
 export async function createGzipTarArchive(
-  entries: TarEntry[]
-): Promise<Buffer<ArrayBuffer>> {
+  entries: Array<{
+    content: Buffer;
+    path: string;
+    mode: number;
+  }>
+) {
   const tar = Buffer.concat([
     ...entries.map(({ content, path, mode }) =>
       Buffer.concat([createTarHeader(path, content.length, mode), pad(content)])
@@ -39,11 +33,9 @@ export async function createGzipTarArchive(
   return gzipAsync(tar);
 }
 
-export async function extractGzipTarArchive(
-  archive: Uint8Array
-): Promise<TarFile[]> {
+export async function extractGzipTarArchive(archive: Uint8Array) {
   const tar = await gunzipAsync(archive).catch(() => {
-    assert.fail('archive must be a gzip-compressed tar archive');
+    throw new TarError('archive must be a gzip-compressed tar archive');
   });
 
   const files: TarFile[] = [];
@@ -61,8 +53,9 @@ export async function extractGzipTarArchive(
     const content = tar.subarray(offset, offset + size);
 
     offset += Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
-
-    assert(offset <= tar.length, 'unexpected end of tar archive');
+    if (offset > tar.length) {
+      throw new TarError('unexpected end of tar archive');
+    }
 
     const type = String.fromCharCode(header[156] ?? 0);
 
@@ -72,10 +65,9 @@ export async function extractGzipTarArchive(
 
     const path = readPath(header);
 
-    assert(
-      type === '\0' || type === '0',
-      `${path}: unsupported tar entry type "${type}"`
-    );
+    if (type !== '\0' && type !== '0') {
+      throw new TarError(`unsupported tar entry type "${type}" at path "${path}"`);
+    }
 
     files.push({
       content: Buffer.from(content),
@@ -84,7 +76,9 @@ export async function extractGzipTarArchive(
     });
   }
 
-  assert(files.length > 0, 'tar archive must contain at least one file');
+  if (files.length === 0) {
+    throw new TarError('tar archive must contain at least one file');
+  }
 
   return files.map((file) => ({
     ...file,
@@ -92,34 +86,31 @@ export async function extractGzipTarArchive(
   }));
 }
 
-function assertSafeRelativePath(path: string): string {
-  assert(path && !isAbsolute(path), `${path}: path must be relative`);
+function assertSafeRelativePath(path: string) {
+  if (isAbsolute(path)) {
+    throw new TarError(`path "${path}" must be relative`);
+  }
 
   const segments = path.split('/');
-  assert(
-    segments.every((segment) => segment && segment !== '..'),
-    `${path}: invalid path`
-  );
+  if (segments.some((segment) => !segment || segment === '..')) {
+    throw new TarError(`invalid path "${path}"`);
+  }
 
   return path;
 }
 
-function isEmptyBlock(block: Uint8Array): boolean {
+function isEmptyBlock(block: Uint8Array) {
   return block.every((byte) => byte === 0);
 }
 
-function readPath(header: Uint8Array): string {
+function readPath(header: Uint8Array) {
   const name = readString(header, 0, 100);
   const prefix = readString(header, 345, 155);
 
   return prefix ? `${prefix}/${name}` : name;
 }
 
-function readString(
-  buffer: Uint8Array,
-  offset: number,
-  length: number
-): string {
+function readString(buffer: Uint8Array, offset: number, length: number) {
   const bytes = buffer.subarray(offset, offset + length);
   const end = bytes.indexOf(0);
   const value = end === -1 ? bytes : bytes.subarray(0, end);
@@ -127,14 +118,16 @@ function readString(
   return Buffer.from(value).toString('utf8');
 }
 
-function readOctal(buffer: Uint8Array, offset: number, length: number): number {
+function readOctal(buffer: Uint8Array, offset: number, length: number) {
   const value = readString(buffer, offset, length).trim();
-  assert(/^[0-7]*$/.test(value), 'invalid octal number in tar header');
+  if (!/^[0-7]*$/.test(value)) {
+    throw new TarError('invalid octal number in tar header');
+  }
 
   return value ? Number.parseInt(value, 8) : 0;
 }
 
-function normalizeTarPath(path: string): string {
+function normalizeTarPath(path: string) {
   let normalized = normalizePath(path);
   while (normalized.startsWith('./')) {
     normalized = normalized.slice(2);
@@ -147,17 +140,13 @@ function normalizeTarPath(path: string): string {
   return normalized;
 }
 
-function isExecutable(header: Uint8Array): boolean {
+function isExecutable(header: Uint8Array) {
   const mode = readOctal(header, 100, 8);
 
   return (mode & 0o111) !== 0;
 }
 
-function createTarHeader(
-  path: string,
-  size: number,
-  mode: number
-): Buffer<ArrayBuffer> {
+function createTarHeader(path: string, size: number, mode: number) {
   const header = Buffer.alloc(BLOCK_SIZE);
   const { name, prefix } = splitTarPath(path);
 
@@ -183,9 +172,11 @@ function createTarHeader(
   return header;
 }
 
-function splitTarPath(path: string): TarPath {
+function splitTarPath(path: string) {
   const bytes = Buffer.byteLength(path);
-  assert(bytes <= 255, `${path}: path is too long for tar archive`);
+  if (bytes > 255) {
+    throw new TarError(`path "${path}" is too long for tar archive`);
+  }
 
   if (bytes <= 100) {
     return {
@@ -208,41 +199,32 @@ function splitTarPath(path: string): TarPath {
     }
   }
 
-  assert.fail(`${path}: path is too long for tar archive`);
+  throw new TarError(`path "${path}" is too long for tar archive`);
 }
 
-function writeString(
-  buffer: Buffer,
-  value: string,
-  offset: number,
-  length: number
-): void {
-  assert(
-    Buffer.byteLength(value) <= length,
-    'value is too long for tar header'
-  );
+function writeString(buffer: Buffer, value: string, offset: number, length: number) {
+  if (Buffer.byteLength(value) > length) {
+    throw new TarError('value is too long for tar header');
+  }
 
   buffer.write(value, offset, length, 'utf8');
 }
 
-function writeOctal(
-  buffer: Buffer,
-  value: number,
-  offset: number,
-  length: number
-): void {
+function writeOctal(buffer: Buffer, value: number, offset: number, length: number) {
   const octal = value.toString(8).padStart(length - 1, '0');
-  assert(octal.length < length, 'value is too large for tar header');
+  if (octal.length >= length) {
+    throw new TarError('value is too large for tar header');
+  }
 
   buffer.write(`${octal}\0`, offset, length, 'ascii');
 }
 
-function writeChecksum(buffer: Buffer, checksum: number): void {
+function writeChecksum(buffer: Buffer, checksum: number) {
   const value = checksum.toString(8).padStart(6, '0');
   buffer.write(`${value}\0 `, 148, 8, 'ascii');
 }
 
-function pad(content: Buffer): Buffer {
+function pad(content: Buffer) {
   const remainder = content.length % BLOCK_SIZE;
   if (remainder === 0) {
     return content;

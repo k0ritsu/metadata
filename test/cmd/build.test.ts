@@ -58,26 +58,18 @@ test('build writes dist manifests for root and cached modules', () => {
 
   runBuild(root);
 
-  assert.deepEqual(
-    readJson(join(root, 'dist', 'modules', 'app', 'module.json')),
-    {
-      name: 'app',
-      description: '',
-      version: '1.0.0',
-      dependencies: {},
-      main: 'src/index.js'
-    }
-  );
-  assert.deepEqual(
-    readJson(
-      join(root, 'dist', 'modules', '.cache', 'lib@1.2.0', 'module.json')
-    ),
-    {
-      name: 'lib',
-      description: '',
-      version: '1.2.0',
-      dependencies: {},
-      main: 'src/lib.js'
-    }
-  );
+  assert.deepEqual(readJson(join(root, 'dist', 'modules', 'app', 'module.json')), {
+    name: 'app',
+    description: '',
+    version: '1.0.0',
+    dependencies: {},
+    main: 'src/index.js'
+  });
+  assert.deepEqual(readJson(join(root, 'dist', 'modules', '.cache', 'lib@1.2.0', 'module.json')), {
+    name: 'lib',
+    description: '',
+    version: '1.2.0',
+    dependencies: {},
+    main: 'src/lib.js'
+  });
 });

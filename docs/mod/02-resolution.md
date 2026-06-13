@@ -10,11 +10,11 @@ Dependency graph construction starts from root modules.
 
 Root only wins on exact name and version match.
 
-Commands such as `tidy`, `install`, and `remove` perform this construction and
-write concrete dependency versions into `modlock.json`.
+Commands such as `tidy`, `install`, and `remove` perform this construction and write concrete
+dependency versions into `modlock.json`.
 
-Runtime resolution does not read `module.json` and does not choose versions. It
-only consumes the concrete graph already written to `modlock.json`.
+Runtime resolution does not read `module.json` and does not choose versions. It only consumes the
+concrete graph already written to `modlock.json`.
 
 ## Version Conflict Example
 
@@ -75,5 +75,5 @@ the importer key is:
 metadata-http@0.1.0
 ```
 
-The loader does not choose semver versions and does not verify installed files.
-Missing files fail through Node's normal module resolution errors.
+The loader does not choose semver versions and does not verify installed files. Missing files fail
+through Node's normal module resolution errors.

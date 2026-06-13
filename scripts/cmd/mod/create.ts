@@ -1,16 +1,17 @@
-import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { CmdError, type CommandHandler } from '../cmd.ts';
 import { MODULE, MODULES, ROOT_NODE } from './common/constants.ts';
 import { createModuleKey } from './common/helpers/key.ts';
+import { withModuleLock } from './common/helpers/lock.ts';
 import { assertModuleName } from './common/helpers/manifest.ts';
 import { readOrCreateModlock, writeModlock } from './common/helpers/modlock.ts';
 import { exists } from './common/helpers/path.ts';
 import { createTsconfigs } from './common/helpers/tsconfig.ts';
-import type { CommandHandler, ModuleManifest } from './common/types.ts';
+import type { ModuleManifest } from './common/types.ts';
 
-export const create: CommandHandler = async (args: string[]) => {
+export const create: CommandHandler = withModuleLock('create', async (args) => {
   const { positionals } = parseArgs({
     strict: true,
     allowPositionals: true,
@@ -18,14 +19,13 @@ export const create: CommandHandler = async (args: string[]) => {
   });
 
   const [name] = positionals;
-  assert(name, 'module name is required');
-
   assertModuleName(name);
 
   const root = resolve(MODULES, name);
 
-  const found = await exists(root);
-  assert(!found, `${name}: root module already exists`);
+  if (await exists(root)) {
+    throw new CmdError(`${name}: root module already exists`);
+  }
 
   const manifest = {
     name,
@@ -37,10 +37,14 @@ export const create: CommandHandler = async (args: string[]) => {
   const modlock = await readOrCreateModlock();
 
   const key = createModuleKey(manifest.name, manifest.version);
-  assert(!modlock.modules[key], `${key}: module already exists in lockfile`);
+  if (modlock.modules[key]) {
+    throw new CmdError(`${key}: module already exists in lockfile`);
+  }
 
   const node = modlock.modules[ROOT_NODE];
-  assert(node, 'root module set is missing from lockfile');
+  if (!node) {
+    throw new CmdError('root module set is missing from lockfile');
+  }
 
   node.dependencies[name] = manifest.version;
   modlock.modules[key] = {
@@ -60,4 +64,4 @@ export const create: CommandHandler = async (args: string[]) => {
       root
     }
   ]);
-};
+});

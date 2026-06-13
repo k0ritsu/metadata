@@ -36,9 +36,7 @@ function runTidy(root: string) {
 }
 
 function readModlock(root: string) {
-  return JSON.parse(
-    readFileSync(join(root, 'src', 'modules', 'modlock.json'), 'utf8')
-  );
+  return JSON.parse(readFileSync(join(root, 'src', 'modules', 'modlock.json'), 'utf8'));
 }
 
 function readJson(path: string) {
@@ -115,31 +113,27 @@ test('tidy builds a flat modlock from root modules and cache', () => {
   });
 
   assert.deepEqual(
-    readJson(join(modules, 'app', 'tsconfig.json')).compilerOptions.paths[
-      '#modules/lib'
-    ],
+    readJson(join(modules, 'app', 'tsconfig.json')).compilerOptions.paths['#modules/lib'],
     ['../.cache/lib@1.2.0']
   );
   assert.deepEqual(
-    readJson(join(modules, 'app', 'tsconfig.json')).compilerOptions.paths[
-      '#core/router'
-    ],
+    readJson(join(modules, 'app', 'tsconfig.json')).compilerOptions.paths['#core/router'],
     ['../../router/types.ts']
   );
   assert.deepEqual(
-    readJson(join(modules, 'app', 'tsconfig.json')).compilerOptions.paths[
-      '#core/errors/*'
-    ],
+    readJson(join(modules, 'app', 'tsconfig.json')).compilerOptions.paths['#core/errors/*'],
     ['../../errors/*']
   );
   assert.deepEqual(
-    readJson(join(modules, '.cache', 'lib@1.2.0', 'tsconfig.json'))
-      .compilerOptions.paths['#core/router'],
+    readJson(join(modules, '.cache', 'lib@1.2.0', 'tsconfig.json')).compilerOptions.paths[
+      '#core/router'
+    ],
     ['../../../router/types.ts']
   );
   assert.deepEqual(
-    readJson(join(modules, '.cache', 'lib@1.2.0', 'tsconfig.json'))
-      .compilerOptions.paths['#core/errors/*'],
+    readJson(join(modules, '.cache', 'lib@1.2.0', 'tsconfig.json')).compilerOptions.paths[
+      '#core/errors/*'
+    ],
     ['../../../errors/*']
   );
   assert.deepEqual(readJson(join(root, 'tsconfig.build.json')).references, [

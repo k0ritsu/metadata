@@ -1,23 +1,34 @@
-import assert from 'node:assert/strict';
 import { cp, mkdir, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { CmdError, type CommandHandler } from '../cmd.ts';
 import { CACHE, MODULES, ROOT_NODE } from './common/constants.ts';
+import { createModuleIntegrity } from './common/helpers/integrity.ts';
 import { createModuleKey } from './common/helpers/key.ts';
+import { withModuleLock } from './common/helpers/lock.ts';
 import { assertModuleName } from './common/helpers/manifest.ts';
 import { readModlock } from './common/helpers/modlock.ts';
 import { exists } from './common/helpers/path.ts';
-import type { CommandHandler } from './common/types.ts';
-import { tidy } from './tidy.ts';
+import type { Modlock } from './common/types.ts';
+import { tidyWorkspace } from './tidy.ts';
 
-export const remove: CommandHandler = async (args: string[]) => {
+interface RemovePlan {
+  cache: string;
+  key: string;
+  preserveInCache: boolean;
+  root: string;
+}
+
+export const remove: CommandHandler = withModuleLock('remove', async (args) => {
   const { positionals } = parseArgs({
     strict: true,
     allowPositionals: true,
     args
   });
 
-  assert(positionals.length > 0, 'module name is required');
+  if (positionals.length === 0) {
+    throw new CmdError('module name is required');
+  }
 
   for (const name of positionals) {
     assertModuleName(name);
@@ -32,27 +43,125 @@ export const remove: CommandHandler = async (args: string[]) => {
     recursive: true
   });
 
+  const plans = await createRemovePlans(names, dependencies, modlock);
+  await executeRemovePlans(plans);
+
+  await tidyWorkspace();
+});
+
+async function createRemovePlans(
+  names: Set<string>,
+  dependencies: Record<string, string>,
+  modlock: Modlock
+) {
+  const plans: RemovePlan[] = [];
+
   for (const name of names) {
     const version = dependencies[name];
-    assert(version, `${name}: module is not installed at root level`);
+    if (!version) {
+      throw new CmdError(`${name}: module is not installed at root level`);
+    }
 
-    const root = resolve(MODULES, name);
-    const cache = resolve(CACHE, createModuleKey(name, version));
+    const key = createModuleKey(name, version);
+    const plan = {
+      cache: resolve(CACHE, key),
+      key,
+      preserveInCache: isReachableAfterRemoval(key, names, modlock),
+      root: resolve(MODULES, name)
+    } satisfies RemovePlan;
 
-    if (await exists(root)) {
-      const found = await exists(cache);
-      if (!found) {
-        await cp(root, cache, {
-          recursive: true
-        });
-      }
+    if (await exists(plan.root)) {
+      await assertRootCanBeRemoved({
+        cache: plan.cache,
+        key: plan.key,
+        modlock,
+        preserveInCache: plan.preserveInCache,
+        root: plan.root
+      });
+    }
 
-      await rm(root, {
-        force: true,
+    plans.push(plan);
+  }
+
+  return plans;
+}
+
+async function executeRemovePlans(plans: RemovePlan[]) {
+  for (const plan of plans) {
+    if (!(await exists(plan.root))) {
+      continue;
+    }
+
+    const found = await exists(plan.cache);
+    if (plan.preserveInCache && !found) {
+      await cp(plan.root, plan.cache, {
         recursive: true
       });
     }
+
+    await rm(plan.root, {
+      force: true,
+      recursive: true
+    });
+  }
+}
+
+async function assertRootCanBeRemoved(options: {
+  cache: string;
+  key: string;
+  modlock: Modlock;
+  preserveInCache: boolean;
+  root: string;
+}) {
+  const node = options.modlock.modules[options.key];
+  const actual = await createModuleIntegrity(options.root);
+
+  if (node?.integrity) {
+    if (actual !== node.integrity) {
+      throw new CmdError(
+        `${options.key}: root module has local changes; publish, reinstall, or manually resolve it before removing`
+      );
+    }
+
+    return;
   }
 
-  await tidy([]);
-};
+  if (options.preserveInCache && (await exists(options.cache))) {
+    throw new CmdError(
+      `${options.key}: root module has no locked integrity and cache already exists; publish, reinstall, or manually resolve the local copy before removing`
+    );
+  }
+}
+
+function isReachableAfterRemoval(key: string, removed: Set<string>, modlock: Modlock) {
+  const rootDependencies = modlock.modules[ROOT_NODE]?.dependencies ?? {};
+  const stack = Object.entries(rootDependencies)
+    .filter(([name]) => !removed.has(name))
+    .map(([name, version]) => createModuleKey(name, version));
+
+  const seen = new Set<string>();
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || seen.has(current)) {
+      continue;
+    }
+
+    if (current === key) {
+      return true;
+    }
+
+    seen.add(current);
+
+    const node = modlock.modules[current];
+    if (!node) {
+      continue;
+    }
+
+    for (const [name, version] of Object.entries(node.dependencies)) {
+      stack.push(createModuleKey(name, version));
+    }
+  }
+
+  return false;
+}

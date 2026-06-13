@@ -1,16 +1,22 @@
-import assert from 'node:assert/strict';
 import { glob, mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, relative, resolve } from 'node:path';
+import { parseArgs } from 'node:util';
+import { CmdError, type CommandHandler } from '../cmd.ts';
 import { CACHE, MODULE, MODULES } from './common/constants.ts';
 import { createModuleKey } from './common/helpers/key.ts';
 import { readModuleManifest } from './common/helpers/manifest.ts';
 import { isInsidePath } from './common/helpers/path.ts';
-import type { CommandHandler } from './common/types.ts';
 
 const TYPESCRIPT_EXTENSION = '.ts';
 const JAVASCRIPT_EXTENSION = '.js';
 
-export const build: CommandHandler = async () => {
+export const build: CommandHandler = async (args) => {
+  parseArgs({
+    strict: true,
+    allowPositionals: false,
+    args
+  });
+
   const paths = await collectModulePaths();
   for (const path of paths) {
     const manifest = await readModuleManifest(path, {
@@ -18,11 +24,9 @@ export const build: CommandHandler = async () => {
     });
 
     const root = dirname(path);
-
-    assert(
-      isValidModuleRoot(root, manifest.name, manifest.version),
-      `${root}: invalid module root for ${manifest.name}@${manifest.version}`
-    );
+    if (!isValidModuleRoot(root, manifest.name, manifest.version)) {
+      throw new CmdError(`${root}: invalid module root for ${manifest.name}@${manifest.version}`);
+    }
 
     if (manifest.main?.endsWith(TYPESCRIPT_EXTENSION)) {
       const main = manifest.main.slice(0, -TYPESCRIPT_EXTENSION.length);
@@ -37,13 +41,10 @@ export const build: CommandHandler = async () => {
   }
 };
 
-async function collectModulePaths(): Promise<string[]> {
+async function collectModulePaths() {
   const paths: string[] = [];
 
-  for (const pattern of [
-    resolve(MODULES, '*', MODULE),
-    resolve(CACHE, '*', MODULE)
-  ]) {
+  for (const pattern of [resolve(MODULES, '*', MODULE), resolve(CACHE, '*', MODULE)]) {
     for await (const path of glob(pattern)) {
       paths.push(path);
     }
@@ -52,11 +53,7 @@ async function collectModulePaths(): Promise<string[]> {
   return paths;
 }
 
-function isValidModuleRoot(
-  root: string,
-  dependency: string,
-  version: string
-): boolean {
+function isValidModuleRoot(root: string, dependency: string, version: string) {
   return isInsidePath(root, CACHE)
     ? basename(root) === createModuleKey(dependency, version)
     : basename(root) === dependency;

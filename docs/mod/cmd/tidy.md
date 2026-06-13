@@ -15,8 +15,7 @@ It:
 - rebuilds `src/modules/modlock.json`;
 - keeps only reachable cached modules in the lockfile;
 - physically removes unused cache directories;
-- physically removes cache entries duplicated by root modules with the same
-  version;
+- physically removes cache entries duplicated by root modules with the same version;
 - regenerates per-module `tsconfig.json` files;
 - regenerates `tsconfig.build.json`.
 
@@ -51,8 +50,8 @@ Every root module is written to:
 For each root module, and then recursively for each dependency:
 
 1. read the dependency range from `module.json`;
-2. if the root set contains the same dependency name and a version satisfying
-   the range, use the root module;
+2. if the root set contains the same dependency name and a version satisfying the range, use the
+   root module;
 3. otherwise inspect cache entries matching:
 
 ```text
@@ -84,8 +83,7 @@ After the reachable graph is known, `tidy` cleans `.cache`.
 It removes:
 
 - cache module directories not reachable from any root module;
-- cache module directories whose exact module key is already provided by a root
-  module.
+- cache module directories whose exact module key is already provided by a root module.
 
 Example:
 
@@ -136,8 +134,7 @@ When a module key already exists in the previous lockfile, `tidy` preserves:
 - `resolved`;
 - `integrity`.
 
-The dependency map may be recalculated, but artifact metadata for the same key
-must survive.
+The dependency map may be recalculated, but artifact metadata for the same key must survive.
 
 ## TypeScript Configs
 
@@ -151,8 +148,8 @@ For each reachable module key, excluding `""`, it writes:
 
 The generated paths must match runtime loader resolution exactly.
 
-It also removes stale generated `tsconfig.json` files from cache modules that
-are no longer reachable.
+It also removes stale generated `tsconfig.json` files from cache modules that are no longer
+reachable.
 
 ## Failure Cases
 

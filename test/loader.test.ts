@@ -20,15 +20,11 @@ interface Modlock {
 }
 
 function runModule(path: string) {
-  return execFileSync(
-    process.execPath,
-    ['--import', './src/modules/import.ts', path],
-    {
-      cwd: resolve('.'),
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
-  ).trim();
+  return execFileSync(process.execPath, ['--import', './src/modules/import.ts', path], {
+    cwd: resolve('.'),
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  }).trim();
 }
 
 function write(path: string, content: string) {
@@ -291,11 +287,7 @@ test('loader uses cached dependency when root has a different version', () => {
 
   const app = resolve(MODULES, appName);
   const rootDependency = resolve(MODULES, rootDependencyName);
-  const cachedDependency = resolve(
-    MODULES,
-    '.cache',
-    `${rootDependencyName}@2.0.0`
-  );
+  const cachedDependency = resolve(MODULES, '.cache', `${rootDependencyName}@2.0.0`);
 
   try {
     writeModuleManifest(app, appName, '1.0.0');
@@ -395,10 +387,7 @@ console.log(
         }
       },
       () => {
-        assert.equal(
-          runModule(resolve(app, 'src', 'main.ts')),
-          '404:409:60000'
-        );
+        assert.equal(runModule(resolve(app, 'src', 'main.ts')), '404:409:60000');
       }
     );
   } finally {

@@ -9,8 +9,8 @@ src/modules/<module>
 src/modules/.cache/<module>@<version>
 ```
 
-Root modules are editable project modules. Cached modules are installed
-artifacts required by root modules or by other cached dependencies.
+Root modules are editable project modules. Cached modules are installed artifacts required by root
+modules or by other cached dependencies.
 
 The module system has one version authority:
 
@@ -18,12 +18,10 @@ The module system has one version authority:
 src/modules/modlock.json
 ```
 
-Runtime resolution and generated TypeScript configs must follow the same
-lockfile graph exactly.
+Runtime resolution and generated TypeScript configs must follow the same lockfile graph exactly.
 
-Install, remove, and tidy are responsible for maintaining that graph. Build
-copies manifests from the physical module layout. Status checks only editable
-root modules against their locked integrity.
+Install, remove, and tidy are responsible for maintaining that graph. Build copies manifests from
+the physical module layout. Publish and install are responsible for writing artifact integrity.
 
 ## Invariants
 
@@ -32,13 +30,12 @@ root modules against their locked integrity.
 3. Non-root module keys use `<module>@<version>`.
 4. A root module satisfies a dependency only when both name and version match.
 5. If root and cache contain the same module version, root wins.
-6. The system should not intentionally leave the same module version in both
-   root and cache.
+6. The system should not intentionally leave the same module version in both root and cache.
 7. Cached modules exist only while reachable from the root graph.
 8. Commands must not create nested `modules/` dependency directories.
 9. Runtime loader resolution and generated TypeScript paths must match exactly.
-10. Generated files, including module `tsconfig.json`, are excluded from publish
-    archives and integrity checks.
+10. Generated files, including module `tsconfig.json`, are excluded from publish archives and
+    integrity checks.
 
 ## Physical Meaning
 
@@ -61,8 +58,8 @@ src/modules/.cache/metadata-http@0.1.0
 -> src/modules/metadata-http
 ```
 
-If an editable root module is removed but still required by another root module,
-it moves back to cache:
+If an editable root module is removed but still required by another root module, it moves back to
+cache:
 
 ```text
 src/modules/metadata-http

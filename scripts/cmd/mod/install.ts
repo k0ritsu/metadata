@@ -1,36 +1,34 @@
-import assert from 'node:assert/strict';
-import { chmod, glob, mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, glob, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import semver from 'semver';
+import { CmdError, type CommandHandler } from '../cmd.ts';
 import { CACHE, MODULE, MODULES, ROOT_NODE } from './common/constants.ts';
-import {
-  extractGzipTarArchive,
-  type TarFile
-} from './common/helpers/archive.ts';
+import { extractGzipTarArchive, type TarFile } from './common/helpers/archive.ts';
 import { createModuleIntegrity } from './common/helpers/integrity.ts';
 import { createModuleKey, parseModuleKey } from './common/helpers/key.ts';
+import { withModuleLock } from './common/helpers/lock.ts';
 import {
   assertModuleName,
   isSemver,
   parseModuleManifest,
   readModuleManifest
 } from './common/helpers/manifest.ts';
+import { readModlock, resolveModuleRoot, writeModlock } from './common/helpers/modlock.ts';
 import {
-  readModlock,
-  resolveModuleRoot,
-  writeModlock
-} from './common/helpers/modlock.ts';
-import { exists, isInsidePath } from './common/helpers/path.ts';
+  createTemporarySibling,
+  exists,
+  isInsidePath,
+  replacePathAtomically
+} from './common/helpers/path.ts';
 import {
+  api,
   createRepositoryUrl,
-  fetchRepository,
-  fetchUrl,
+  request,
   resolveRepository
 } from './common/helpers/repository.ts';
 import { createTsconfigs } from './common/helpers/tsconfig.ts';
-import type { CommandHandler, ModuleManifest } from './common/types.ts';
-import { tidy } from './tidy.ts';
+import { tidyWorkspace } from './tidy.ts';
 
 interface InstallSpec {
   name: string;
@@ -44,7 +42,7 @@ interface InstallMetadata {
 
 const LATEST = 'latest';
 
-export const install: CommandHandler = async (args: string[]) => {
+export const install: CommandHandler = withModuleLock('install', async (args: string[]) => {
   const { positionals, values } = parseArgs({
     strict: true,
     allowPositionals: true,
@@ -73,20 +71,14 @@ export const install: CommandHandler = async (args: string[]) => {
   const installed = new Set<string>();
 
   for (const [name] of rootSet) {
-    await installDependencies(
-      repository,
-      resolve(MODULES, name),
-      metadata,
-      rootSet,
-      installed
-    );
+    await installDependencies(repository, resolve(MODULES, name), metadata, rootSet, installed);
   }
 
-  await tidy([]);
+  await tidyWorkspace();
   await mergeInstalledMetadata(metadata);
-};
+});
 
-async function installFromModlock(): Promise<void> {
+async function installFromModlock() {
   const modlock = await readModlock();
 
   for (const [key, node] of Object.entries(modlock.modules)) {
@@ -94,29 +86,37 @@ async function installFromModlock(): Promise<void> {
       continue;
     }
 
-    assert(node.resolved, `${key}: missing resolved`);
-    assert(node.integrity, `${key}: missing integrity`);
+    if (!node.resolved) {
+      throw new CmdError(`${key}: missing resolved`);
+    }
+
+    if (!node.integrity) {
+      throw new CmdError(`${key}: missing integrity`);
+    }
 
     const { dependency, version } = parseModuleKey(key);
     const root = resolveModuleRoot(key, modlock);
 
-    await installArtifactAtRoot(
+    const metadata = await installArtifactAtRoot(
       root,
       {
         name: dependency,
         version
       },
-      node.resolved
+      node.resolved,
+      {
+        expectedIntegrity: node.integrity
+      }
     );
-
-    const actual = await createModuleIntegrity(root);
-    assert(actual === node.integrity, `${key}: integrity verification failed`);
+    if (metadata.integrity !== node.integrity) {
+      throw new CmdError(`${key}: integrity verification failed`);
+    }
   }
 
   await createTsconfigs();
 }
 
-function parseInstallSpec(spec: string): InstallSpec {
+function parseInstallSpec(spec: string) {
   let name = spec;
   let version: string | undefined;
 
@@ -127,12 +127,9 @@ function parseInstallSpec(spec: string): InstallSpec {
   }
 
   assertModuleName(name);
-  assert(
-    version === undefined ||
-      version === LATEST ||
-      semver.validRange(version) !== null,
-    `${version}: invalid module version`
-  );
+  if (typeof version !== 'undefined' && version !== LATEST && semver.validRange(version) === null) {
+    throw new CmdError(`${version}: invalid module version`);
+  }
 
   return {
     name,
@@ -144,7 +141,7 @@ async function installRequestedRoot(
   repository: string,
   spec: InstallSpec,
   metadata: Map<string, InstallMetadata>
-): Promise<void> {
+) {
   const version = await resolveVersion(repository, spec);
 
   const key = createModuleKey(spec.name, version);
@@ -152,10 +149,11 @@ async function installRequestedRoot(
 
   const existing = await readManifestOrUndefined(root);
   if (existing) {
-    assert(
-      existing.name === spec.name,
-      `${root}: cannot install ${spec.name}@${version} over ${existing.name}@${existing.version}`
-    );
+    if (existing.name !== spec.name) {
+      throw new CmdError(
+        `${root}: cannot install ${spec.name}@${version} over ${existing.name}@${existing.version}`
+      );
+    }
 
     if (existing.version === version) {
       return;
@@ -164,11 +162,7 @@ async function installRequestedRoot(
 
   const cached = resolve(CACHE, key);
   if (await exists(cached)) {
-    await rm(root, {
-      force: true,
-      recursive: true
-    });
-    await rename(cached, root);
+    await replacePathAtomically(root, cached);
 
     return;
   }
@@ -180,16 +174,10 @@ async function installRequestedRoot(
 
   const resolved = createArchiveUrl(repository, spec);
 
-  await installArtifactAtRoot(root, spec, resolved);
-  metadata.set(key, {
-    integrity: await createModuleIntegrity(root),
-    resolved
-  });
+  metadata.set(key, await installArtifactAtRoot(root, spec, resolved));
 }
 
-async function readManifestOrUndefined(
-  root: string
-): Promise<ModuleManifest | undefined> {
+async function readManifestOrUndefined(root: string) {
   try {
     return await readInstalledManifest(root);
   } catch {
@@ -197,7 +185,7 @@ async function readManifestOrUndefined(
   }
 }
 
-async function loadRootSet(): Promise<Map<string, string>> {
+async function loadRootSet() {
   const rootSet = new Map<string, string>();
 
   for await (const path of glob(resolve(MODULES, '*', MODULE))) {
@@ -217,7 +205,7 @@ async function installDependencies(
   metadata: Map<string, InstallMetadata>,
   rootSet: Map<string, string>,
   installed: Set<string>
-): Promise<void> {
+) {
   const manifest = await readInstalledManifest(root);
 
   const key = createModuleKey(manifest.name, manifest.version);
@@ -231,13 +219,7 @@ async function installDependencies(
     for (const [name, range] of Object.entries(manifest.dependencies)) {
       let version = rootSet.get(name);
       if (version && semver.satisfies(version, range)) {
-        await installDependencies(
-          repository,
-          resolve(MODULES, name),
-          metadata,
-          rootSet,
-          installed
-        );
+        await installDependencies(repository, resolve(MODULES, name), metadata, rootSet, installed);
 
         continue;
       }
@@ -259,11 +241,7 @@ async function installDependencies(
 
         const resolved = createArchiveUrl(repository, spec);
 
-        await installArtifactAtRoot(root, spec, resolved);
-        metadata.set(key, {
-          integrity: await createModuleIntegrity(root),
-          resolved
-        });
+        metadata.set(key, await installArtifactAtRoot(root, spec, resolved));
       }
 
       await installDependencies(repository, root, metadata, rootSet, installed);
@@ -271,108 +249,127 @@ async function installDependencies(
   }
 }
 
-function readInstalledManifest(root: string): Promise<ModuleManifest> {
+function readInstalledManifest(root: string) {
   return readModuleManifest(root, {
     validateDependencyRanges: true
   });
 }
 
-async function resolveVersion(
-  repository: string,
-  spec: InstallSpec
-): Promise<string> {
+async function resolveVersion(repository: string, spec: InstallSpec) {
   const versions = await getVersions(repository, spec.name);
 
   const sorted = semver.rsort(versions.filter(isSemver));
-  assert(sorted.length > 0, `${spec.name}: no published versions found`);
+  if (sorted.length === 0) {
+    throw new CmdError(`${spec.name}: no published versions found`);
+  }
 
   if (!spec.version || spec.version === LATEST) {
     const [latest] = sorted;
-    assert(latest, `${spec.name}: no published versions found`);
+    if (!latest) {
+      throw new CmdError(`${spec.name}: no published versions found`);
+    }
 
     return latest;
   }
 
   if (isSemver(spec.version)) {
-    assert(
-      sorted.includes(spec.version),
-      `${spec.name}@${spec.version}: version not found`
-    );
+    if (!sorted.includes(spec.version)) {
+      throw new CmdError(`${spec.name}@${spec.version}: version not found`);
+    }
 
     return spec.version;
   }
 
   const version = semver.maxSatisfying(sorted, spec.version);
-  assert(version, `${spec.name}@${spec.version}: no matching version found`);
+  if (!version) {
+    throw new CmdError(`${spec.name}@${spec.version}: no matching version found`);
+  }
 
   return version;
 }
 
-async function getVersions(
-  repository: string,
-  name: string
-): Promise<string[]> {
-  const versions = await fetchRepository(
-    repository,
-    `modules/${name}/versions`
-  );
+async function getVersions(repository: string, name: string) {
+  const versions = await api(repository, `modules/${name}/versions`);
 
-  assert(
-    Array.isArray(versions) &&
-      versions.every((version) => typeof version === 'string'),
-    `${name}: repository returned invalid version list`
-  );
+  if (!Array.isArray(versions) || !versions.every((version) => typeof version === 'string')) {
+    throw new CmdError(`${name}: repository returned invalid version list`);
+  }
 
   return versions;
 }
 
-function createArchiveUrl(
-  repository: string,
-  spec: NonNullable<InstallSpec>
-): string {
-  return createRepositoryUrl(
-    repository,
-    `modules/${spec.name}/versions/${spec.version}/archive`
-  );
+function createArchiveUrl(repository: string, spec: NonNullable<InstallSpec>) {
+  return createRepositoryUrl(repository, `modules/${spec.name}/versions/${spec.version}/archive`);
 }
 
 async function installArtifactAtRoot(
   root: string,
   spec: NonNullable<InstallSpec>,
-  url: string
-): Promise<void> {
+  url: string,
+  options = {
+    expectedIntegrity: ''
+  }
+) {
   const archive = await downloadArchive(url);
   const files = normalizeArchiveFiles(await extractGzipTarArchive(archive));
 
   const manifest = readManifest(files);
-  assert(
-    manifest.name === spec.name && manifest.version === spec.version,
-    `${MODULE}: expected ${spec.name}@${spec.version}, got ${manifest.name}@${manifest.version}`
-  );
+  if (manifest.name !== spec.name || manifest.version !== spec.version) {
+    throw new CmdError(
+      `${MODULE}: expected ${spec.name}@${spec.version}, got ${manifest.name}@${manifest.version}`
+    );
+  }
 
-  await writeModule(root, files);
+  let stage = await writeStagedModule(root, files);
+  let integrity = '';
+  try {
+    integrity = await createModuleIntegrity(stage);
+    if (options.expectedIntegrity) {
+      if (integrity !== options.expectedIntegrity) {
+        throw new CmdError(
+          `${createModuleKey(spec.name, spec.version)}: integrity verification failed`
+        );
+      }
+    }
+
+    await replacePathAtomically(root, stage);
+    stage = '';
+  } finally {
+    if (stage) {
+      await rm(stage, {
+        force: true,
+        recursive: true
+      });
+    }
+  }
 
   console.log(`Installed ${manifest.name}@${manifest.version}`);
+
+  return {
+    integrity,
+    resolved: url
+  };
 }
 
-async function downloadArchive(url: string): Promise<Buffer> {
-  const response = await fetchUrl(url);
+async function downloadArchive(url: string) {
+  const response = await request(url);
 
   return Buffer.from(await response.arrayBuffer());
 }
 
-function normalizeArchiveFiles(files: TarFile[]): TarFile[] {
+function normalizeArchiveFiles(files: TarFile[]) {
   if (files.some((file) => file.path === MODULE)) {
     return files;
   }
 
   const [root] = new Set(files.map((file) => file.path.split('/')[0]));
-  assert(root, 'archive must contain files at a common root');
+  if (!root) {
+    throw new CmdError('archive must contain files at a common root');
+  }
 
-  assert(
-    files.every((file) => file.path.startsWith(`${root}/`)),
-    'archive must contain files at a common root'
-  );
+  if (!files.every((file) => file.path.startsWith(`${root}/`))) {
+    throw new CmdError('archive must contain files at a common root');
+  }
 
   return files.map((file) => ({
     ...file,
@@ -380,39 +377,50 @@ function normalizeArchiveFiles(files: TarFile[]): TarFile[] {
   }));
 }
 
-function readManifest(files: TarFile[]): ModuleManifest {
+function readManifest(files: TarFile[]) {
   const file = files.find((file) => file.path === MODULE);
-  assert(file, `archive must contain ${MODULE}`);
+  if (!file) {
+    throw new CmdError(`archive must contain ${MODULE}`);
+  }
 
-  return parseModuleManifest(file.content.toString(), MODULE, {
+  return parseModuleManifest(file.content.toString(), {
+    context: MODULE,
     validateDependencyRanges: true
   });
 }
 
-async function writeModule(root: string, files: TarFile[]): Promise<void> {
-  await rm(root, {
-    force: true,
-    recursive: true
-  });
+async function writeStagedModule(root: string, files: TarFile[]) {
+  const stage = await createTemporarySibling(root);
 
-  for (const file of files) {
-    const path = resolve(root, file.path);
-    assert(isInsidePath(path, root), `${file.path}: invalid file path`);
+  try {
+    for (const file of files) {
+      const path = resolve(stage, file.path);
+      if (!isInsidePath(path, stage)) {
+        throw new CmdError(`${file.path}: invalid file path`);
+      }
 
-    await mkdir(dirname(path), {
+      await mkdir(dirname(path), {
+        recursive: true
+      });
+      await writeFile(path, file.content);
+
+      if (file.executable) {
+        await chmod(path, 0o755);
+      }
+    }
+
+    return stage;
+  } catch (error) {
+    await rm(stage, {
+      force: true,
       recursive: true
     });
-    await writeFile(path, file.content);
 
-    if (file.executable) {
-      await chmod(path, 0o755);
-    }
+    throw error;
   }
 }
 
-async function mergeInstalledMetadata(
-  metadata: Map<string, InstallMetadata>
-): Promise<void> {
+async function mergeInstalledMetadata(metadata: Map<string, InstallMetadata>) {
   if (metadata.size === 0) {
     return;
   }

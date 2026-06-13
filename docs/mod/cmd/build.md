@@ -8,11 +8,10 @@ mod build
 
 ## Purpose
 
-TypeScript compilation moves executable files into the build directory, but
-module metadata must be present there too.
+TypeScript compilation moves executable files into the build directory, but module metadata must be
+present there too.
 
-`build` copies every installed module manifest from `src/modules` into the
-matching build location.
+`build` copies every installed module manifest from `src/modules` into the matching build location.
 
 ## Source Modules
 
@@ -23,8 +22,8 @@ src/modules/<module>/module.json
 src/modules/.cache/<module>@<version>/module.json
 ```
 
-This is intentionally broader than the reachable lockfile graph. If a module
-exists on disk, its manifest is copied.
+This is intentionally broader than the reachable lockfile graph. If a module exists on disk, its
+manifest is copied.
 
 Dot-directories other than `.cache` are ignored.
 
@@ -46,8 +45,7 @@ The build output must preserve the same root/cache shape as `src/modules`.
 
 ## Manifest Rewriting
 
-`build` rewrites runtime entry fields from TypeScript extensions to JavaScript
-extensions.
+`build` rewrites runtime entry fields from TypeScript extensions to JavaScript extensions.
 
 Example:
 
@@ -67,15 +65,15 @@ becomes:
 
 If the entry already uses `.js`, it is copied as-is.
 
-Only runtime file references are rewritten. Names, versions, dependencies,
-exports, and artifact metadata are not recalculated by `build`.
+Only runtime file references are rewritten. Names, versions, dependencies, exports, and artifact
+metadata are not recalculated by `build`.
 
 ## No Cleanup
 
 `build` does not clean stale manifests from the build directory.
 
-Full build-output cleanup can be handled by a separate command or by removing
-the whole build directory before compilation.
+Full build-output cleanup can be handled by a separate command or by removing the whole build
+directory before compilation.
 
 ## Does Not
 

@@ -29,8 +29,7 @@ The default version is fixed by the command. There is no version argument.
 
 ## Lockfile
 
-If `src/modules/modlock.json` does not exist, `create` creates a minimal
-lockfile:
+If `src/modules/modlock.json` does not exist, `create` creates a minimal lockfile:
 
 ```json
 {
@@ -60,8 +59,8 @@ Then it adds the new module to the root set:
 }
 ```
 
-`create` does not need to run a full dependency resolution pass. A newly created
-module has no dependencies, so the command can update the lockfile directly.
+`create` does not need to run a full dependency resolution pass. A newly created module has no
+dependencies, so the command can update the lockfile directly.
 
 ## Duplicate Rules
 
@@ -71,11 +70,11 @@ module has no dependencies, so the command can update the lockfile directly.
 src/modules/<name>
 ```
 
-Root modules are unique by filesystem path. Two root modules with the same name
-cannot exist at the same time.
+Root modules are unique by filesystem path. Two root modules with the same name cannot exist at the
+same time.
 
-If the same module name exists only in `.cache`, `create` may still create a new
-root module. The new root module is a separate editable module version.
+If the same module name exists only in `.cache`, `create` may still create a new root module. The
+new root module is a separate editable module version.
 
 If the exact module key already exists in the lockfile, `create` must fail:
 

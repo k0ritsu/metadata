@@ -14,8 +14,7 @@ mod init
 
 ## Purpose
 
-`init` is a bootstrap command. It does not resolve modules and does not scan
-`src/modules`.
+`init` is a bootstrap command. It does not resolve modules and does not scan `src/modules`.
 
 It only ensures that the configuration files exist:
 
@@ -38,8 +37,7 @@ If `modrc.json` does not exist, `--repository` is required.
 
 If `modrc.json` exists and `--repository` is not passed, the file is left as-is.
 
-If `modrc.json` exists and `--repository` is passed, only the repository URL is
-updated.
+If `modrc.json` exists and `--repository` is passed, only the repository URL is updated.
 
 ## Lockfile
 

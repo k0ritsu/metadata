@@ -17,23 +17,17 @@ test('init creates repository config and a minimal lockfile', () => {
     }
   );
 
-  assert.deepEqual(
-    JSON.parse(readFileSync(join(modules, 'modrc.json'), 'utf8')),
-    {
-      repository: 'http://localhost'
-    }
-  );
-  assert.deepEqual(
-    JSON.parse(readFileSync(join(modules, 'modlock.json'), 'utf8')),
-    {
-      lockfileVersion: 1,
-      modules: {
-        '': {
-          dependencies: {}
-        }
+  assert.deepEqual(JSON.parse(readFileSync(join(modules, 'modrc.json'), 'utf8')), {
+    repository: 'http://localhost'
+  });
+  assert.deepEqual(JSON.parse(readFileSync(join(modules, 'modlock.json'), 'utf8')), {
+    lockfileVersion: 1,
+    modules: {
+      '': {
+        dependencies: {}
       }
     }
-  );
+  });
 });
 
 test('init does not scan modules', () => {
@@ -62,17 +56,14 @@ test('init does not scan modules', () => {
     cwd: root
   });
 
-  assert.deepEqual(
-    JSON.parse(readFileSync(join(modules, 'modlock.json'), 'utf8')),
-    {
-      lockfileVersion: 1,
-      modules: {
-        '': {
-          dependencies: {}
-        }
+  assert.deepEqual(JSON.parse(readFileSync(join(modules, 'modlock.json'), 'utf8')), {
+    lockfileVersion: 1,
+    modules: {
+      '': {
+        dependencies: {}
       }
     }
-  );
+  });
 });
 
 test('init does not rewrite an existing lockfile', () => {
@@ -108,8 +99,5 @@ test('init does not rewrite an existing lockfile', () => {
     cwd: root
   });
 
-  assert.equal(
-    readFileSync(join(modules, 'modlock.json'), 'utf8'),
-    JSON.stringify(existing)
-  );
+  assert.equal(readFileSync(join(modules, 'modlock.json'), 'utf8'), JSON.stringify(existing));
 });

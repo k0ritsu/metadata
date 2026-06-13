@@ -1,19 +1,19 @@
-import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { MODRC } from '../constants.ts';
 import { assertModrc, resolveModrc } from './modrc.ts';
 import { isRecord } from './record.ts';
 
-export async function resolveRepository(repository?: string): Promise<string> {
+class RepositoryError extends Error {}
+
+export async function resolveRepository(repository?: string) {
   if (repository) {
     return repository;
   }
 
   const path = await resolveModrc();
-  assert(
-    path,
-    `repository is required: no repository argument or ${MODRC} found`
-  );
+  if (!path) {
+    throw new RepositoryError(`no repository argument or ${MODRC} found`);
+  }
 
   const modrc: unknown = JSON.parse(
     await readFile(path, {
@@ -21,38 +21,27 @@ export async function resolveRepository(repository?: string): Promise<string> {
     })
   );
 
-  assertModrc(modrc, path);
+  assertModrc(modrc);
 
   return modrc.repository;
 }
 
-export function createRepositoryUrl(repository: string, path: string): string {
-  return new URL(path, repository).href;
-}
-
-export async function fetchRepository(
-  repository: string,
-  path: string,
-  init?: RequestInit
-): Promise<unknown> {
-  const response = await fetchUrl(createRepositoryUrl(repository, path), init);
+export async function api(repository: string, path: string, init?: RequestInit) {
+  const response = await request(createRepositoryUrl(repository, path), init);
 
   return response.json();
 }
 
-export async function fetchUrl(
-  url: string,
-  init?: RequestInit
-): Promise<Response> {
+export async function request(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
   if (!response.ok) {
-    throw new Error(await formatRepositoryError(response));
+    throw new RepositoryError(await formatResponseError(response));
   }
 
   return response;
 }
 
-async function formatRepositoryError(response: Response): Promise<string> {
+async function formatResponseError(response: Response) {
   const fallback = `repository request failed with ${response.status}`;
 
   const body = await response.text();
@@ -67,5 +56,9 @@ async function formatRepositoryError(response: Response): Promise<string> {
     }
   } catch {}
 
-  return `${fallback}: ${body}`;
+  return fallback;
+}
+
+export function createRepositoryUrl(repository: string, path: string) {
+  return new URL(path, repository).href;
 }

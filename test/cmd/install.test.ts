@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   writeFileSync
 } from 'node:fs';
@@ -18,17 +19,9 @@ interface TestModule {
   version: string;
 }
 
-function runInstall(
-  root: string,
-  repository: Map<string, TestModule>,
-  specs: string[]
-) {
-  const archiveUrl = String(
-    pathToFileURL(resolve('scripts/cmd/mod/common/helpers/archive.ts'))
-  );
-  const installUrl = String(
-    pathToFileURL(resolve('scripts/cmd/mod/install.ts'))
-  );
+function runInstall(root: string, repository: Map<string, TestModule>, specs: string[]) {
+  const archiveUrl = String(pathToFileURL(resolve('scripts/cmd/mod/common/helpers/archive.ts')));
+  const installUrl = String(pathToFileURL(resolve('scripts/cmd/mod/install.ts')));
 
   execFileSync(
     process.execPath,
@@ -100,11 +93,7 @@ globalThis.fetch = async (input) => {
   });
 };
 
-await install(${JSON.stringify([
-        '--repository',
-        'http://repo.local',
-        ...specs
-      ])});
+await install(${JSON.stringify(['--repository', 'http://repo.local', ...specs])});
 `
     ],
     {
@@ -112,6 +101,73 @@ await install(${JSON.stringify([
       stdio: 'pipe'
     }
   );
+}
+
+function runInstallWithArchive(root: string, archiveScript: string) {
+  const archiveUrl = String(pathToFileURL(resolve('scripts/cmd/mod/common/helpers/archive.ts')));
+  const installUrl = String(pathToFileURL(resolve('scripts/cmd/mod/install.ts')));
+
+  return execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '--eval',
+      `
+const [{ createGzipTarArchive }, { install }] = await Promise.all([
+  import(${JSON.stringify(archiveUrl)}),
+  import(${JSON.stringify(installUrl)})
+]);
+
+globalThis.fetch = async (input) => {
+  const url = new URL(String(input));
+  if (!url.pathname.endsWith('/archive')) {
+    return new Response(JSON.stringify(['1.0.0']), {
+      headers: { 'content-type': 'application/json' }
+    });
+  }
+
+  ${archiveScript}
+};
+
+await install(['--repository', 'http://repo.local', 'app@1.0.0']);
+`
+    ],
+    {
+      cwd: root,
+      stdio: 'pipe'
+    }
+  );
+}
+
+function runInstallWithArchiveError(root: string, archiveScript: string) {
+  try {
+    runInstallWithArchive(root, archiveScript);
+  } catch (error) {
+    return error;
+  }
+
+  assert.fail('expected install to fail');
+}
+
+function writeInstalledApp(root: string, source = 'existing') {
+  const app = join(root, 'src', 'modules', 'app');
+  mkdirSync(join(app, 'src'), {
+    recursive: true
+  });
+  writeFileSync(
+    join(app, 'module.json'),
+    JSON.stringify(
+      {
+        name: 'app',
+        description: '',
+        version: '0.1.0',
+        dependencies: {}
+      },
+      undefined,
+      2
+    )
+  );
+  writeFileSync(join(app, 'src', 'value.ts'), source);
 }
 
 test('install places dependency conflicts in flat cache entries', () => {
@@ -163,14 +219,8 @@ test('install places dependency conflicts in flat cache entries', () => {
   runInstall(root, repository, ['app@1.0.0', 'tool@1.0.0']);
 
   assert.equal(existsSync(join(modules, 'lib', 'module.json')), false);
-  assert.equal(
-    existsSync(join(modules, '.cache', 'lib@1.2.0', 'module.json')),
-    true
-  );
-  assert.equal(
-    existsSync(join(modules, '.cache', 'lib@2.0.0', 'module.json')),
-    true
-  );
+  assert.equal(existsSync(join(modules, '.cache', 'lib@1.2.0', 'module.json')), true);
+  assert.equal(existsSync(join(modules, '.cache', 'lib@2.0.0', 'module.json')), true);
 
   const appLib = JSON.parse(
     readFileSync(join(modules, '.cache', 'lib@1.2.0', 'module.json'), 'utf8')
@@ -178,21 +228,13 @@ test('install places dependency conflicts in flat cache entries', () => {
   const toolLib = JSON.parse(
     readFileSync(join(modules, '.cache', 'lib@2.0.0', 'module.json'), 'utf8')
   );
-  const appTsconfig = JSON.parse(
-    readFileSync(join(modules, 'app', 'tsconfig.json'), 'utf8')
-  );
-  const toolTsconfig = JSON.parse(
-    readFileSync(join(modules, 'tool', 'tsconfig.json'), 'utf8')
-  );
+  const appTsconfig = JSON.parse(readFileSync(join(modules, 'app', 'tsconfig.json'), 'utf8'));
+  const toolTsconfig = JSON.parse(readFileSync(join(modules, 'tool', 'tsconfig.json'), 'utf8'));
 
   assert.equal(appLib.version, '1.2.0');
   assert.equal(toolLib.version, '2.0.0');
-  assert.deepEqual(appTsconfig.compilerOptions.paths['#modules/lib'], [
-    '../.cache/lib@1.2.0'
-  ]);
-  assert.deepEqual(toolTsconfig.compilerOptions.paths['#modules/lib'], [
-    '../.cache/lib@2.0.0'
-  ]);
+  assert.deepEqual(appTsconfig.compilerOptions.paths['#modules/lib'], ['../.cache/lib@1.2.0']);
+  assert.deepEqual(toolTsconfig.compilerOptions.paths['#modules/lib'], ['../.cache/lib@2.0.0']);
 });
 
 test('install resolves transitive conflicts by importer module key', () => {
@@ -252,33 +294,92 @@ test('install resolves transitive conflicts by importer module key', () => {
   runInstall(root, repository, ['plugin@2.0.0', 'app@1.0.0']);
 
   assert.equal(existsSync(join(modules, 'lib', 'module.json')), false);
-  assert.equal(
-    existsSync(join(modules, '.cache', 'lib@1.2.0', 'module.json')),
-    true
-  );
-  assert.equal(
-    existsSync(join(modules, '.cache', 'plugin@1.0.0', 'module.json')),
-    true
-  );
-  assert.equal(
-    existsSync(join(modules, '.cache', 'lib@2.0.0', 'module.json')),
-    true
-  );
+  assert.equal(existsSync(join(modules, '.cache', 'lib@1.2.0', 'module.json')), true);
+  assert.equal(existsSync(join(modules, '.cache', 'plugin@1.0.0', 'module.json')), true);
+  assert.equal(existsSync(join(modules, '.cache', 'lib@2.0.0', 'module.json')), true);
 
-  const appTsconfig = JSON.parse(
-    readFileSync(join(modules, 'app', 'tsconfig.json'), 'utf8')
-  );
+  const appTsconfig = JSON.parse(readFileSync(join(modules, 'app', 'tsconfig.json'), 'utf8'));
   const pluginTsconfig = JSON.parse(
-    readFileSync(
-      join(modules, '.cache', 'plugin@1.0.0', 'tsconfig.json'),
-      'utf8'
-    )
+    readFileSync(join(modules, '.cache', 'plugin@1.0.0', 'tsconfig.json'), 'utf8')
   );
 
-  assert.deepEqual(appTsconfig.compilerOptions.paths['#modules/lib'], [
-    '../.cache/lib@1.2.0'
+  assert.deepEqual(appTsconfig.compilerOptions.paths['#modules/lib'], ['../.cache/lib@1.2.0']);
+  assert.deepEqual(pluginTsconfig.compilerOptions.paths['#modules/lib'], ['../lib@2.0.0']);
+});
+
+test('install preserves existing root when archive is not gzip tar', () => {
+  const root = mkdtempSync(join(tmpdir(), 'metadata-mod-install-'));
+  const modules = join(root, 'src', 'modules');
+
+  mkdirSync(modules, {
+    recursive: true
+  });
+  writeFileSync(join(root, 'tsconfig.base.json'), '{}');
+  writeFileSync(join(root, 'tsconfig.json'), '{}');
+  writeInstalledApp(root);
+
+  runInstallWithArchiveError(
+    root,
+    `return new Response(new TextEncoder().encode('not an archive'));`
+  );
+
+  assert.equal(readFileSync(join(modules, 'app', 'src', 'value.ts'), 'utf8'), 'existing');
+});
+
+test('install preserves existing root when archive manifest identity differs', () => {
+  const root = mkdtempSync(join(tmpdir(), 'metadata-mod-install-'));
+  const modules = join(root, 'src', 'modules');
+
+  mkdirSync(modules, {
+    recursive: true
+  });
+  writeFileSync(join(root, 'tsconfig.base.json'), '{}');
+  writeFileSync(join(root, 'tsconfig.json'), '{}');
+  writeInstalledApp(root);
+
+  runInstallWithArchiveError(
+    root,
+    `const archive = await createGzipTarArchive([
+  {
+    content: Buffer.from(JSON.stringify({
+      name: 'other',
+      description: '',
+      version: '1.0.0',
+      dependencies: {}
+    })),
+    mode: 0o644,
+    path: 'module.json'
+  }
+]);
+return new Response(new Uint8Array(archive));`
+  );
+
+  assert.equal(readFileSync(join(modules, 'app', 'src', 'value.ts'), 'utf8'), 'existing');
+});
+
+test('install removes temporary staging directories after success', () => {
+  const root = mkdtempSync(join(tmpdir(), 'metadata-mod-install-'));
+  const modules = join(root, 'src', 'modules');
+  const repository = new Map<string, TestModule>([
+    [
+      'app@1.0.0',
+      {
+        name: 'app',
+        version: '1.0.0'
+      }
+    ]
   ]);
-  assert.deepEqual(pluginTsconfig.compilerOptions.paths['#modules/lib'], [
-    '../lib@2.0.0'
-  ]);
+
+  mkdirSync(modules, {
+    recursive: true
+  });
+  writeFileSync(join(root, 'tsconfig.base.json'), '{}');
+  writeFileSync(join(root, 'tsconfig.json'), '{}');
+
+  runInstall(root, repository, ['app@1.0.0']);
+
+  assert.equal(
+    readdirSync(modules).some((entry) => entry.startsWith('.mod-tmp-app-')),
+    false
+  );
 });

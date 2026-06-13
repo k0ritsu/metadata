@@ -1,13 +1,6 @@
-import assert from 'node:assert/strict';
 import { glob, rm, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
-import {
-  CACHE,
-  MODULES,
-  MODULES_ALIAS,
-  ROOT_NODE,
-  TSCONFIG_PROJECT
-} from '../constants.ts';
+import { CACHE, MODULES, MODULES_ALIAS, ROOT_NODE, TSCONFIG_PROJECT } from '../constants.ts';
 import type { Modlock } from '../types.ts';
 import { createModuleKey } from './key.ts';
 import { readModlock, resolveModuleRoot } from './modlock.ts';
@@ -24,15 +17,15 @@ const CORE_ALIASES = {
   '#core/store': resolve('src', 'store', 'types.ts')
 };
 
+class TsconfigError extends Error {}
+
 export async function createTsconfigs(
   toUpdate?: Array<{
     root: string;
   }>
-): Promise<void> {
+) {
   const modlock = await readModlock();
-  const modules = Object.keys(modlock.modules).filter(
-    (key) => key !== ROOT_NODE
-  );
+  const modules = Object.keys(modlock.modules).filter((key) => key !== ROOT_NODE);
 
   if (toUpdate) {
     const roots = new Set(toUpdate.map(({ root }) => resolve(root)));
@@ -59,25 +52,21 @@ export async function createTsconfigs(
   }
 
   await Promise.all([
-    writeFile(
-      TSCONFIG_BUILD,
-      JSON.stringify(createBuildTsconfig(modlock, modules), undefined, 2)
-    ),
+    writeFile(TSCONFIG_BUILD, JSON.stringify(createBuildTsconfig(modlock, modules), undefined, 2)),
     removeStaleModuleTsconfigs(modlock, modules)
   ]);
 }
 
-function createModuleTsconfig(modlock: Modlock, key: string): unknown {
+function createModuleTsconfig(modlock: Modlock, key: string) {
   const root = resolveModuleRoot(key, modlock);
 
   const node = modlock.modules[key];
-  assert(node, `${key}: module is missing from modlock`);
+  if (!node) {
+    throw new TsconfigError(`${key}: module is missing from modlock`);
+  }
 
   const paths = Object.fromEntries(
-    Object.entries(CORE_ALIASES).map(([alias, path]) => [
-      alias,
-      [toTsconfigPath(root, path)]
-    ])
+    Object.entries(CORE_ALIASES).map(([alias, path]) => [alias, [toTsconfigPath(root, path)]])
   );
 
   const references = new Map<
@@ -95,10 +84,7 @@ function createModuleTsconfig(modlock: Modlock, key: string): unknown {
   ]);
 
   for (const [dependency, version] of Object.entries(node.dependencies)) {
-    const dependencyRoot = resolveModuleRoot(
-      createModuleKey(dependency, version),
-      modlock
-    );
+    const dependencyRoot = resolveModuleRoot(createModuleKey(dependency, version), modlock);
     const dependencyPath = toTsconfigPath(root, dependencyRoot);
 
     paths[`${MODULES_ALIAS}${dependency}`] = [dependencyPath];
@@ -127,7 +113,7 @@ function createModuleTsconfig(modlock: Modlock, key: string): unknown {
   };
 }
 
-function createBuildTsconfig(modlock: Modlock, modules: string[]): unknown {
+function createBuildTsconfig(modlock: Modlock, modules: string[]) {
   const root = resolve('.');
 
   return {
@@ -137,16 +123,13 @@ function createBuildTsconfig(modlock: Modlock, modules: string[]): unknown {
         path: toTsconfigPath(root, TSCONFIG)
       },
       ...modules.map((key) => ({
-        path: toTsconfigPath(
-          root,
-          resolve(resolveModuleRoot(key, modlock), TSCONFIG_PROJECT)
-        )
+        path: toTsconfigPath(root, resolve(resolveModuleRoot(key, modlock), TSCONFIG_PROJECT))
       }))
     ]
   };
 }
 
-function toTsconfigPath(from: string, to: string): string {
+function toTsconfigPath(from: string, to: string) {
   const path = relative(from, to).split(sep).join('/');
   if (!path) {
     return '.';
@@ -159,10 +142,7 @@ function toTsconfigPath(from: string, to: string): string {
   return `./${path}`;
 }
 
-async function removeStaleModuleTsconfigs(
-  modlock: Modlock,
-  modules: string[]
-): Promise<void> {
+async function removeStaleModuleTsconfigs(modlock: Modlock, modules: string[]) {
   const roots = new Set(modules.map((key) => resolveModuleRoot(key, modlock)));
   const stale: Promise<void>[] = [];
 

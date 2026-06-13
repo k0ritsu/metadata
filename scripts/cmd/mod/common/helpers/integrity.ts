@@ -3,13 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { collectModuleFiles } from './files.ts';
 
-interface IntegrityEntry {
-  content: Buffer;
-  path: string;
-  mode: number;
-}
-
-export async function createModuleIntegrity(root: string): Promise<string> {
+export async function createModuleIntegrity(root: string) {
   const hash = createHash('sha512');
 
   const entries = await collectIntegrityEntries(root);
@@ -27,18 +21,13 @@ export async function createModuleIntegrity(root: string): Promise<string> {
   return `sha512-${hash.digest('base64')}`;
 }
 
-async function collectIntegrityEntries(
-  root: string
-): Promise<IntegrityEntry[]> {
+async function collectIntegrityEntries(root: string) {
   const files = await collectModuleFiles(root);
 
   return Promise.all(
     files.map(async (path) => {
       const absolute = resolve(root, path);
-      const [content, stats] = await Promise.all([
-        readFile(absolute),
-        stat(absolute)
-      ]);
+      const [content, stats] = await Promise.all([readFile(absolute), stat(absolute)]);
 
       return {
         content,

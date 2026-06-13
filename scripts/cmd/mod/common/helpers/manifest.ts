@@ -1,4 +1,3 @@
-import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import semver from 'semver';
@@ -6,14 +5,14 @@ import { MODULE, MODULE_NAME } from '../constants.ts';
 import type { ModuleManifest } from '../types.ts';
 import { isRecord } from './record.ts';
 
-interface ModuleManifestOptions {
-  validateDependencyRanges: boolean;
-}
+class ManifestError extends Error {}
 
 export async function readModuleManifest(
   path: string,
-  options?: ModuleManifestOptions
-): Promise<ModuleManifest> {
+  options?: {
+    validateDependencyRanges: boolean;
+  }
+) {
   if (basename(path) !== MODULE) {
     path = resolve(path, MODULE);
   }
@@ -22,69 +21,87 @@ export async function readModuleManifest(
     encoding: 'utf8'
   });
 
-  return parseModuleManifest(content, path, options);
+  return parseModuleManifest(content, {
+    context: path,
+    validateDependencyRanges: Boolean(options?.validateDependencyRanges)
+  });
 }
 
 export function parseModuleManifest(
   content: string,
-  path: string,
-  options?: ModuleManifestOptions
-): ModuleManifest {
+  options = {
+    context: 'invalid module manifest',
+    validateDependencyRanges: false
+  }
+) {
   const manifest: unknown = JSON.parse(content);
-  assertModuleManifest(manifest, path, options);
+  assertModuleManifest(manifest, options);
 
   return manifest;
 }
 
-export function assertModuleName(name: string): void {
-  assert(MODULE_NAME.test(name), `${name}: invalid module name`);
+export function assertModuleName(
+  name: unknown,
+  options = {
+    context: name
+  }
+): asserts name is string {
+  if (typeof name !== 'string' || !MODULE_NAME.test(name)) {
+    throw new ManifestError(`${options.context}: invalid module name "${name}"`);
+  }
 }
 
-export function isSemver(value: string): boolean {
+export function assertModuleDependencies(
+  dependencies: unknown,
+  options = {
+    context: 'invalid module dependencies',
+    validateVersionRanges: false
+  }
+) {
+  if (!isRecord(dependencies)) {
+    throw new ManifestError(`${options.context}: dependencies must be an object`);
+  }
+
+  for (const [dependency, version] of Object.entries(dependencies)) {
+    assertModuleName(dependency, options);
+
+    if (typeof version === 'string') {
+      if (options.validateVersionRanges ? semver.validRange(version) !== null : isSemver(version)) {
+        continue;
+      }
+    }
+
+    throw new ManifestError(
+      `${options.context} [${dependency}]: invalid dependency version "${version}"`
+    );
+  }
+}
+
+export function isSemver(value: string) {
   return semver.valid(value) === value;
 }
 
 function assertModuleManifest(
   value: unknown,
-  path: string,
-  options = {
-    validateDependencyRanges: false
+  options: {
+    context: string;
+    validateDependencyRanges: boolean;
   }
 ): asserts value is ModuleManifest {
-  assert(isRecord(value), `${path}: manifest must be an object`);
+  if (!isRecord(value)) {
+    throw new ManifestError(`${options.context}: manifest must be an object`);
+  }
 
-  assert(typeof value['name'] === 'string', `${path}: name is required`);
-  assertModuleName(value['name']);
+  assertModuleName(value['name'], options);
 
-  assert(typeof value['version'] === 'string', `${path}: version is required`);
-  assert(
-    isSemver(value['version']),
-    `${value['version']}: invalid module version`
-  );
+  if (typeof value['version'] !== 'string' || !isSemver(value['version'])) {
+    throw new ManifestError(`${options.context}: invalid module version "${value['version']}"`);
+  }
 
-  if (value['dependencies'] !== undefined) {
-    assertDependencies(value['dependencies'], {
+  if (typeof value['dependencies'] !== 'undefined') {
+    assertModuleDependencies(value['dependencies'], {
+      context: options.context,
       validateVersionRanges: options.validateDependencyRanges
     });
-  }
-}
-
-function assertDependencies(
-  dependencies: unknown,
-  options = {
-    validateVersionRanges: false
-  }
-): void {
-  assert(isRecord(dependencies), 'dependencies must be an object');
-
-  for (const [dependency, version] of Object.entries(dependencies)) {
-    assertModuleName(dependency);
-    assert(
-      typeof version === 'string' &&
-        (options.validateVersionRanges
-          ? semver.validRange(version) !== null
-          : isSemver(version)),
-      `${dependency}: invalid dependency version`
-    );
   }
 }
