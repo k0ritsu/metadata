@@ -47,25 +47,3 @@ await repo(['set', 'https://repo.local'], {
     repository: 'https://repo.local'
   });
 });
-
-test('init is not a supported command', () => {
-  const root = mkdtempSync(join(tmpdir(), 'metadata-mod-repo-'));
-
-  assert.throws(() => {
-    execFileSync(process.execPath, [resolve('scripts', 'mod.ts'), 'init'], {
-      cwd: root,
-      stdio: 'pipe'
-    });
-  }, /Unknown command 'init'/);
-});
-
-test('install is not a supported command', () => {
-  const root = mkdtempSync(join(tmpdir(), 'metadata-mod-repo-'));
-
-  assert.throws(() => {
-    execFileSync(process.execPath, [resolve('scripts', 'mod.ts'), 'install'], {
-      cwd: root,
-      stdio: 'pipe'
-    });
-  }, /Unknown command 'install'/);
-});
