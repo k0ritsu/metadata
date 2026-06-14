@@ -1,46 +1,17 @@
 #!/usr/bin/env node
 
-import { CmdError, type CommandHandler } from './cmd/cmd.ts';
-import { build } from './cmd/mod/build.ts';
-import { create } from './cmd/mod/create.ts';
-import { init } from './cmd/mod/init.ts';
-import { install } from './cmd/mod/install.ts';
-import { publish } from './cmd/mod/publish.ts';
-import { remove } from './cmd/mod/remove.ts';
-import { tidy } from './cmd/mod/tidy.ts';
+import { main } from './cmd/cmd.ts';
 
-const commands: Record<string, CommandHandler> = {
-  build,
-  create,
-  init,
-  install,
-  publish,
-  remove,
-  tidy
-};
+import './cmd/mod/build.ts';
+import './cmd/mod/create.ts';
+import './cmd/mod/download.ts';
+import './cmd/mod/get.ts';
+import './cmd/mod/graph.ts';
+import './cmd/mod/publish.ts';
+import './cmd/mod/remove.ts';
+import './cmd/mod/repo.ts';
+import './cmd/mod/tidy.ts';
+import './cmd/mod/verify.ts';
+import './cmd/mod/why.ts';
 
-try {
-  const [command, ...args] = process.argv.slice(2);
-  if (!command) {
-    throw new CmdError('command is required');
-  }
-
-  const handler = commands[command];
-  if (!handler) {
-    throw new Error(`${command}: unknown command`);
-  }
-
-  await handler(args);
-} catch (error) {
-  if (error instanceof Error) {
-    console.error(`${error.name}: ${error.message}`);
-
-    if (process.env['DEBUG']) {
-      console.error(error.stack);
-    }
-  } else {
-    console.error(String(error));
-  }
-
-  process.exit(1);
-}
+await main();

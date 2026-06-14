@@ -4,6 +4,7 @@ export interface ModuleManifest {
   version: string;
   main?: string;
   dependencies?: Record<string, string>;
+  [key: string]: unknown;
 }
 
 export interface Modlock {
