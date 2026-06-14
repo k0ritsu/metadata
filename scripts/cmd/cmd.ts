@@ -9,7 +9,7 @@ export interface CmdContext {
 }
 
 export interface CmdMain {
-  (args: string[], env: CmdContext): Promise<void>;
+  (args: string[], context: CmdContext): Promise<void>;
 }
 
 interface CmdOptions {
