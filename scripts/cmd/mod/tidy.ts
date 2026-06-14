@@ -2,10 +2,9 @@ import { glob, rm } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import semver from 'semver';
-import { CmdError, type CommandHandler } from '../cmd.ts';
+import { CmdError, registerCommand } from '../cmd.ts';
 import { CACHE, MODULE, MODULES, ROOT_NODE } from './common/constants.ts';
 import { createModuleKey } from './common/helpers/key.ts';
-import { withModuleLock } from './common/helpers/lock.ts';
 import { readModuleManifest } from './common/helpers/manifest.ts';
 import {
   copyModuleMetadata,
@@ -15,6 +14,7 @@ import {
   writeModlock
 } from './common/helpers/modlock.ts';
 import { isInsidePath } from './common/helpers/path.ts';
+import { withModuleTransaction } from './common/helpers/transaction.ts';
 import { createTsconfigs } from './common/helpers/tsconfig.ts';
 import type { Modlock, ModlockNode, ModuleManifest } from './common/types.ts';
 
@@ -30,21 +30,25 @@ interface ModuleRegistry {
   cacheByName: Map<string, ModuleDescriptor[]>;
 }
 
-export const tidy: CommandHandler = withModuleLock('tidy', async (args) => {
-  parseArgs({
-    strict: true,
-    allowPositionals: false,
-    args
-  });
+registerCommand({
+  name: 'tidy',
+  description: 'Rebuild modlock.json from local root and cache modules',
+  main: withModuleTransaction('tidy', async (args) => {
+    parseArgs({
+      strict: true,
+      allowPositionals: false,
+      args
+    });
 
-  await tidyWorkspace();
+    await tidyWorkspace();
+  })
 });
 
 export async function tidyWorkspace() {
   const modlock = await createNextModlock();
 
   await writeModlock(modlock);
-  await createTsconfigs();
+  await createTsconfigs(modlock);
   await cleanCache(modlock);
 }
 
@@ -89,7 +93,7 @@ async function loadRootModules() {
     });
 
     if (basename(root) !== manifest.name) {
-      throw new CmdError(`${root}: module directory must match module name ${manifest.name}`);
+      throw new CmdError(`${root}: Module directory must match module name ${manifest.name}`);
     }
 
     roots.push({
@@ -114,7 +118,7 @@ async function resolveModule(
   }
 
   if (stack.has(manifest.key)) {
-    throw new CmdError(`${manifest.key}: circular dependency detected`);
+    throw new CmdError(`${manifest.key}: Circular dependency detected`);
   }
 
   const nextStack = new Set(stack);
@@ -148,14 +152,14 @@ async function resolveDependency(dependency: string, range: string, registry: Mo
 
   const version = semver.maxSatisfying(versions, range);
   if (!version) {
-    throw new CmdError(`${dependency}@${range}: dependency is not installed`);
+    throw new CmdError(`${dependency}@${range}: Dependency is not installed`);
   }
 
   const key = createModuleKey(dependency, version);
 
   const manifest = registry.cacheByKey.get(key);
   if (!manifest) {
-    throw new CmdError(`${dependency}@${version}: dependency is not installed`);
+    throw new CmdError(`${dependency}@${version}: Dependency is not installed`);
   }
 
   return manifest;
@@ -178,7 +182,7 @@ async function loadCachedModulesByName(dependency: string, registry: ModuleRegis
 
     const key = createModuleKey(manifest.name, manifest.version);
     if (basename(root) !== key) {
-      throw new CmdError(`${root}: directory must match module key ${key}`);
+      throw new CmdError(`${root}: Directory must match module key ${key}`);
     }
 
     const module = {

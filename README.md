@@ -168,16 +168,11 @@ Full module documentation starts at [Module System](docs/module-resolution.md).
 
 The module CLI is implemented in `scripts/mod.ts`.
 
-Initialize module configuration:
+Configure a module repository:
 
 ```bash
-node scripts/mod.ts init --repository http://localhost:1337
-```
-
-If `src/modules/modrc.json` already exists, `--repository` is not required:
-
-```bash
-node scripts/mod.ts init
+node scripts/mod.ts repo set http://localhost:1337
+node scripts/mod.ts repo get
 ```
 
 Create a new editable root module:
@@ -186,12 +181,16 @@ Create a new editable root module:
 node scripts/mod.ts create <module>
 ```
 
-Install root modules from the repository, or install everything from the lockfile when no module
-names are passed:
+Install root modules from the repository:
 
 ```bash
-node scripts/mod.ts install <module[@version]>...
-node scripts/mod.ts install
+node scripts/mod.ts get <module[@version]>...
+```
+
+Install everything described by the lockfile:
+
+```bash
+node scripts/mod.ts download
 ```
 
 Rebuild the lockfile from root modules and reachable cached dependencies, then regenerate TypeScript
@@ -211,6 +210,14 @@ Publish one root module:
 
 ```bash
 node scripts/mod.ts publish <module>
+```
+
+Inspect or verify the selected graph:
+
+```bash
+node scripts/mod.ts graph
+node scripts/mod.ts why <module[@version]>
+node scripts/mod.ts verify
 ```
 
 Copy module manifests into the build output:

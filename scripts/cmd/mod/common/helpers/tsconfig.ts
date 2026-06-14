@@ -1,9 +1,10 @@
-import { glob, rm, writeFile } from 'node:fs/promises';
+import { glob, rm } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { CACHE, MODULES, MODULES_ALIAS, ROOT_NODE, TSCONFIG_PROJECT } from '../constants.ts';
 import type { Modlock } from '../types.ts';
+import { writeOrderedJsonFile } from './json.ts';
 import { createModuleKey } from './key.ts';
-import { readModlock, resolveModuleRoot } from './modlock.ts';
+import { resolveModuleRoot } from './modlock.ts';
 
 const TSCONFIG_BASE = resolve('tsconfig.base.json');
 const TSCONFIG_BUILD = resolve('tsconfig.build.json');
@@ -20,12 +21,12 @@ const CORE_ALIASES = {
 class TsconfigError extends Error {}
 
 export async function createTsconfigs(
+  modlock: Modlock,
   toUpdate?: Array<{
     root: string;
   }>
 ) {
-  const modlock = await readModlock();
-  const modules = Object.keys(modlock.modules).filter((key) => key !== ROOT_NODE);
+  const modules = sortModuleKeys(modlock);
 
   if (toUpdate) {
     const roots = new Set(toUpdate.map(({ root }) => resolve(root)));
@@ -34,27 +35,48 @@ export async function createTsconfigs(
       modules
         .filter((key) => roots.has(resolveModuleRoot(key, modlock)))
         .map((key) => {
-          return writeFile(
+          return writeOrderedJsonFile(
             resolve(resolveModuleRoot(key, modlock), TSCONFIG_PROJECT),
-            JSON.stringify(createModuleTsconfig(modlock, key), undefined, 2)
+            createModuleTsconfig(modlock, key)
           );
         })
     );
   } else {
     await Promise.all(
       modules.map((key) => {
-        return writeFile(
+        return writeOrderedJsonFile(
           resolve(resolveModuleRoot(key, modlock), TSCONFIG_PROJECT),
-          JSON.stringify(createModuleTsconfig(modlock, key), undefined, 2)
+          createModuleTsconfig(modlock, key)
         );
       })
     );
   }
 
   await Promise.all([
-    writeFile(TSCONFIG_BUILD, JSON.stringify(createBuildTsconfig(modlock, modules), undefined, 2)),
+    writeOrderedJsonFile(TSCONFIG_BUILD, createBuildTsconfig(modlock, modules)),
     removeStaleModuleTsconfigs(modlock, modules)
   ]);
+}
+
+function sortModuleKeys(modlock: Modlock) {
+  return Object.keys(modlock.modules)
+    .filter((key) => key !== ROOT_NODE)
+    .toSorted((left, right) => {
+      const leftRoot = isRootModule(left, modlock);
+      const rightRoot = isRootModule(right, modlock);
+
+      if (leftRoot !== rightRoot) {
+        return leftRoot ? -1 : 1;
+      }
+
+      return left.localeCompare(right);
+    });
+}
+
+function isRootModule(key: string, modlock: Modlock) {
+  const [name, version] = key.split('@');
+
+  return Boolean(name && version && modlock.modules[ROOT_NODE]?.dependencies[name] === version);
 }
 
 function createModuleTsconfig(modlock: Modlock, key: string) {

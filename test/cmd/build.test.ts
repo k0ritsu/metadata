@@ -13,7 +13,7 @@ interface TestModule {
 }
 
 function writeModule(root: string, mod: TestModule) {
-  mkdirSync(root, {
+  mkdirSync(join(root, 'src'), {
     recursive: true
   });
   writeFileSync(
@@ -28,6 +28,10 @@ function writeModule(root: string, mod: TestModule) {
       2
     )
   );
+
+  if (mod.main) {
+    writeFileSync(join(root, mod.main), '');
+  }
 }
 
 function runBuild(root: string) {

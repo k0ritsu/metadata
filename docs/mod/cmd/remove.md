@@ -54,15 +54,11 @@ in cache:
 src/modules/.cache/lib@1.0.0
 ```
 
-If that cache directory already exists, the root copy is deleted and the cache copy is kept only
-when the root module still matches the lockfile integrity.
-
-If the root copy has local changes, `remove` fails instead of silently keeping an older cache
-artifact over unpublished work. Publish, reinstall, or manually resolve the local copy first.
+If the root copy has local changes, `remove` fails instead of preserving an unreproducible cache
+artifact. Publish, reinstall, or manually resolve the local copy first.
 
 When a removed module must be preserved in cache and the lockfile has no `integrity` for that
-module, `remove` can only copy the root module if the destination cache directory does not already
-exist.
+module, `remove` fails. Cache entries must be reproducible on another system.
 
 ## No Longer Needed
 
@@ -123,6 +119,7 @@ Generated paths must match runtime loader resolution exactly.
 - a requested module is not installed as a root module;
 - a surviving dependency range cannot be satisfied by root or cache;
 - a dependency cycle is detected;
-- a module that must be moved to cache cannot be copied safely.
+- a module that must be moved to cache cannot be copied safely;
+- a module that must be moved to cache has no locked integrity;
 - a root module has local changes and removal would preserve or prefer a cache artifact for the same
   module version.

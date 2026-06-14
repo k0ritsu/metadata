@@ -32,7 +32,8 @@ sha512-...
 
 Commands write `integrity` only when they materialize an artifact boundary:
 
-- `mod install` computes integrity for installed archives and verifies it during lockfile installs;
+- `mod get` computes integrity for installed archives;
+- `mod download` verifies locked integrity while installing from the lockfile;
 - `mod publish` computes integrity from the uploaded artifact and stores it after a successful
   publish.
 

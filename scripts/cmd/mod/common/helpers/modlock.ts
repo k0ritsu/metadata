@@ -1,8 +1,9 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { CACHE, MODLOCK, MODULES, ROOT_NODE } from '../constants.ts';
 import type { Modlock, ModlockNode, ModuleMetadata } from '../types.ts';
 import { parseModuleKey } from './key.ts';
+import { writeJsonFile } from './json.ts';
 import { assertModuleDependencies, assertModuleName, isSemver } from './manifest.ts';
 import { exists } from './path.ts';
 import { isRecord } from './record.ts';
@@ -49,7 +50,7 @@ export async function readOrCreateModlock() {
 export async function writeModlock(modlock: Modlock) {
   assertModlock(modlock);
 
-  await writeFile(resolve(MODULES, MODLOCK), JSON.stringify(sortModlock(modlock), undefined, 2));
+  await writeJsonFile(resolve(MODULES, MODLOCK), sortModlock(modlock));
 }
 
 export function resolveModuleRoot(key: string, modlock: Modlock) {
@@ -116,17 +117,17 @@ function sortEntries<T>(entries: Array<[string, T]>) {
 
 function assertModlock(value: unknown): asserts value is Modlock {
   if (!isRecord(value)) {
-    throw new ModlockError('modlock must be an object');
+    throw new ModlockError('Modlock must be an object');
   }
 
   const lockfileVersion = value['lockfileVersion'];
   if (lockfileVersion !== LOCKFILE_VERSION) {
-    throw new ModlockError(`unsupported lockfile version ${lockfileVersion}`);
+    throw new ModlockError(`Unsupported lockfile version ${lockfileVersion}`);
   }
 
   const modules = value['modules'];
   if (!isRecord(modules)) {
-    throw new ModlockError('modules must be an object');
+    throw new ModlockError('Modules must be an object');
   }
 
   for (const [key, node] of Object.entries(modules)) {
@@ -135,7 +136,7 @@ function assertModlock(value: unknown): asserts value is Modlock {
       assertModuleName(dependency);
 
       if (!isSemver(version)) {
-        throw new ModlockError(`${key}: invalid locked version "${version}"`);
+        throw new ModlockError(`${key}: Invalid locked version '${version}'`);
       }
     }
 
@@ -156,7 +157,7 @@ function assertModlockNode(
   }
 ): asserts value is ModlockNode {
   if (!isRecord(value)) {
-    throw new ModlockError(`${options.context}: dependencies must be an object`);
+    throw new ModlockError(`${options.context}: Dependencies must be an object`);
   }
 
   assertModuleDependencies(value['dependencies'], {
@@ -168,7 +169,7 @@ function assertModlockNode(
     const integrity = typeof value['integrity'];
 
     if (integrity !== 'undefined' && integrity !== 'string') {
-      throw new ModlockError(`${options.context}: integrity must be a string`);
+      throw new ModlockError(`${options.context}: Integrity must be a string`);
     }
   }
 
@@ -176,7 +177,7 @@ function assertModlockNode(
     const resolved = typeof value['resolved'];
 
     if (resolved !== 'undefined' && resolved !== 'string') {
-      throw new ModlockError(`${options.context}: resolved must be a string`);
+      throw new ModlockError(`${options.context}: Resolved must be a string`);
     }
   }
 }

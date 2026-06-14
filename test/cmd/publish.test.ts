@@ -108,7 +108,7 @@ globalThis.fetch = async (input, init) => {
 
   if (
     JSON.stringify(paths) !==
-    JSON.stringify(['module.json', 'src/index.ts'])
+    JSON.stringify(['app/module.json', 'app/src/index.ts'])
   ) {
     return new Response(JSON.stringify({ detail: paths.join(',') }), {
       status: 400
@@ -131,7 +131,10 @@ globalThis.fetch = async (input, init) => {
   );
 };
 
-await publish(['--repository', 'https://repo.local', 'app']);
+await publish(['--repository', 'https://repo.local', 'app'], {
+  fetch: globalThis.fetch,
+  logger: console
+});
 `
     ],
     {

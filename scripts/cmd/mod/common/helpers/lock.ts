@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import process from 'node:process';
-import type { CommandHandler } from '../../../cmd.ts';
+import type { CmdMain } from '../../../cmd.ts';
 import { MODULES } from '../constants.ts';
 import { isRecord } from './record.ts';
 
@@ -16,14 +16,14 @@ interface Lock {
   timestamp: string;
 }
 
-export function withModuleLock(cmd: string, handler: CommandHandler) {
+export function withModuleLock(cmd: string, handler: CmdMain) {
   const path = resolve(MODULES, LOCK);
 
-  const wrapper: CommandHandler = async (args: string[]) => {
+  const wrapper: CmdMain = async (args, env) => {
     await acquireLock(path, cmd);
 
     try {
-      await handler(args);
+      await handler(args, env);
     } finally {
       await releaseLock(path);
     }
@@ -64,16 +64,16 @@ async function acquireLock(path: string, cmd: string) {
       const lock = await readLock(path);
       if (lock) {
         throw new LockError(
-          `command "${lock.cmd}" is already running in ${lock.cwd} \
+          `Command '${lock.cmd}' is already running in ${lock.cwd} \
 (pid ${lock.pid}, started ${lock.timestamp})`
         );
       }
 
-      throw new LockError('lock file disappeared while acquiring the lock');
+      throw new LockError('Lock file disappeared while acquiring the lock');
     }
   }
 
-  throw new LockError('failed to acquire lock');
+  throw new LockError('Failed to acquire lock');
 }
 
 function isFileExistsError(error: unknown) {
@@ -83,7 +83,7 @@ function isFileExistsError(error: unknown) {
 async function removeStaleLockIfPossible(path: string) {
   const lock = await readLock(path);
   if (!lock) {
-    throw new LockError('lock file is missing');
+    throw new LockError('Lock file is missing');
   }
 
   if (isPidAlive(lock.pid)) {
@@ -123,7 +123,7 @@ function assertLock(value: unknown): asserts value is Lock {
     typeof value['pid'] !== 'number' ||
     typeof value['timestamp'] !== 'string'
   ) {
-    throw new LockError('lock file is corrupted');
+    throw new LockError('Lock file is corrupted');
   }
 }
 

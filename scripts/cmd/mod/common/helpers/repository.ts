@@ -1,29 +1,19 @@
-import { readFile } from 'node:fs/promises';
 import { MODRC } from '../constants.ts';
-import { assertModrc, resolveModrc } from './modrc.ts';
+import type { Modrc } from '../types.ts';
 import { isRecord } from './record.ts';
 
 class RepositoryError extends Error {}
 
-export async function resolveRepository(repository?: string) {
+export function resolveRepository(repository?: string, modrc?: Modrc) {
   if (repository) {
     return repository;
   }
 
-  const path = await resolveModrc();
-  if (!path) {
-    throw new RepositoryError(`no repository argument or ${MODRC} found`);
+  if (modrc) {
+    return modrc.repository;
   }
 
-  const modrc: unknown = JSON.parse(
-    await readFile(path, {
-      encoding: 'utf8'
-    })
-  );
-
-  assertModrc(modrc);
-
-  return modrc.repository;
+  throw new RepositoryError(`No repository argument or ${MODRC} found`);
 }
 
 export async function api(repository: string, path: string, init?: RequestInit) {
@@ -42,7 +32,7 @@ export async function request(url: string, init?: RequestInit) {
 }
 
 async function formatResponseError(response: Response) {
-  const fallback = `repository request failed with ${response.status}`;
+  const fallback = `Repository request failed with ${response.status}`;
 
   const body = await response.text();
   if (!body) {

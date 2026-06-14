@@ -1,7 +1,7 @@
 import { glob, mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { CmdError, type CommandHandler } from '../cmd.ts';
+import { CmdError, registerCommand } from '../cmd.ts';
 import { CACHE, MODULE, MODULES } from './common/constants.ts';
 import { createModuleKey } from './common/helpers/key.ts';
 import { readModuleManifest } from './common/helpers/manifest.ts';
@@ -10,36 +10,43 @@ import { isInsidePath } from './common/helpers/path.ts';
 const TYPESCRIPT_EXTENSION = '.ts';
 const JAVASCRIPT_EXTENSION = '.js';
 
-export const build: CommandHandler = async (args) => {
-  parseArgs({
-    strict: true,
-    allowPositionals: false,
-    args
-  });
-
-  const paths = await collectModulePaths();
-  for (const path of paths) {
-    const manifest = await readModuleManifest(path, {
-      validateDependencyRanges: true
+registerCommand({
+  name: 'build',
+  description: 'Copy module manifests into dist/modules',
+  async main(args) {
+    parseArgs({
+      strict: true,
+      allowPositionals: false,
+      args
     });
 
-    const root = dirname(path);
-    if (!isValidModuleRoot(root, manifest.name, manifest.version)) {
-      throw new CmdError(`${root}: invalid module root for ${manifest.name}@${manifest.version}`);
-    }
+    const paths = await collectModulePaths();
 
-    if (manifest.main?.endsWith(TYPESCRIPT_EXTENSION)) {
-      const main = manifest.main.slice(0, -TYPESCRIPT_EXTENSION.length);
-      manifest.main = `${main}${JAVASCRIPT_EXTENSION}`;
-    }
+    for (const path of paths) {
+      const manifest = await readModuleManifest(path, {
+        validateDependencyRanges: false
+      });
 
-    const dist = resolve('dist', relative(resolve('src'), path));
-    await mkdir(dirname(dist), {
-      recursive: true
-    });
-    await writeFile(dist, JSON.stringify(manifest, undefined, 2));
+      const root = dirname(path);
+      if (!isValidModuleRoot(root, manifest.name, manifest.version)) {
+        throw new CmdError(`${root}: Invalid module root for ${manifest.name}@${manifest.version}`);
+      }
+
+      if (manifest.main?.endsWith(TYPESCRIPT_EXTENSION)) {
+        const main = manifest.main.slice(0, -TYPESCRIPT_EXTENSION.length);
+        manifest.main = `${main}${JAVASCRIPT_EXTENSION}`;
+      }
+
+      const dist = resolve('dist', relative(resolve('src'), path));
+
+      await mkdir(dirname(dist), {
+        recursive: true
+      });
+
+      await writeFile(dist, JSON.stringify(manifest, undefined, 2));
+    }
   }
-};
+});
 
 async function collectModulePaths() {
   const paths: string[] = [];

@@ -17,7 +17,7 @@ src/modules/<module>
 The command requires exactly one module name.
 
 Cached dependencies cannot be published directly. If a cached dependency needs local changes, it
-must first be promoted to root with `mod install` or another root-level workflow.
+must first be promoted to root with `mod get <module>@<version>` or another root-level workflow.
 
 ## Published Version
 
@@ -116,5 +116,5 @@ installed again.
 - the target version already exists in the repository;
 - repository config is missing;
 - the repository upload fails;
-- the repository does not return a `resolved` URL;
+- the repository does not return an archive URL;
 - the artifact cannot be packaged safely.

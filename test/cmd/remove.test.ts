@@ -86,16 +86,20 @@ test('remove keeps a removed root module in cache when still reachable', () => {
   execFileSync(process.execPath, [resolve('scripts', 'mod.ts'), 'tidy'], {
     cwd: root
   });
+  const modlock = readModlock(root);
+  modlock.modules['lib@1.0.0'].integrity = createIntegrity(root, join(modules, 'lib'));
+  writeModlock(root, modlock);
+
   execFileSync(process.execPath, [resolve('scripts', 'mod.ts'), 'remove', 'lib'], {
     cwd: root
   });
 
-  const modlock = readModlock(root);
+  const nextModlock = readModlock(root);
 
-  assert.deepEqual(modlock.modules[''].dependencies, {
+  assert.deepEqual(nextModlock.modules[''].dependencies, {
     app: '1.0.0'
   });
-  assert.deepEqual(modlock.modules['app@1.0.0'].dependencies, {
+  assert.deepEqual(nextModlock.modules['app@1.0.0'].dependencies, {
     lib: '1.0.0'
   });
   assert.equal(existsSync(join(modules, 'lib', 'module.json')), false);

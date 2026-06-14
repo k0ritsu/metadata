@@ -1,17 +1,18 @@
 import { readFile, stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { CmdError, type CommandHandler } from '../cmd.ts';
+import { CmdError, registerCommand } from '../cmd.ts';
 import { MODULE, MODULES, ROOT_NODE } from './common/constants.ts';
 import { createGzipTarArchive } from './common/helpers/archive.ts';
 import { collectModuleFiles } from './common/helpers/files.ts';
 import { createModuleIntegrity } from './common/helpers/integrity.ts';
 import { createModuleKey } from './common/helpers/key.ts';
-import { withModuleLock } from './common/helpers/lock.ts';
 import { assertModuleName, readModuleManifest } from './common/helpers/manifest.ts';
 import { haveSameDependencyGraph, readModlock, writeModlock } from './common/helpers/modlock.ts';
+import { readModrc } from './common/helpers/modrc.ts';
 import { isRecord } from './common/helpers/record.ts';
 import { api, resolveRepository } from './common/helpers/repository.ts';
+import { withModuleTransaction } from './common/helpers/transaction.ts';
 import type { ModuleManifest } from './common/types.ts';
 import { createNextModlock } from './tidy.ts';
 
@@ -20,7 +21,7 @@ interface PublishResult extends Pick<ModuleManifest, 'name' | 'description' | 'v
   repositoryUrl: string;
 }
 
-export const publish: CommandHandler = withModuleLock('publish', async (args) => {
+export const publish = withModuleTransaction('publish', async (args, env) => {
   const { positionals, values } = parseArgs({
     strict: true,
     allowPositionals: true,
@@ -33,6 +34,16 @@ export const publish: CommandHandler = withModuleLock('publish', async (args) =>
   });
 
   const [name] = positionals;
+  if (!name) {
+    throw new CmdError('Module name is required');
+  }
+
+  if (positionals.length > 1) {
+    throw new CmdError(
+      `Unexpected argument '${positionals[1]}'. This command takes exactly one positional argument`
+    );
+  }
+
   assertModuleName(name);
 
   const root = resolve(MODULES, name);
@@ -42,37 +53,44 @@ export const publish: CommandHandler = withModuleLock('publish', async (args) =>
   });
 
   if (manifest.name !== name) {
-    throw new CmdError(`${root}: module directory must match module name ${manifest.name}`);
+    throw new CmdError(`${root}: Module directory must match module name ${manifest.name}`);
   }
 
   await assertPublishPreflight(manifest);
 
-  const repository = await resolveRepository(values.repository);
+  const modrc = values.repository ? undefined : await readModrc();
+  const repository = resolveRepository(values.repository, modrc);
   const archive = await createPublishArchive(root);
 
   const result = await postPublish(repository, manifest, archive);
   if (result.name !== manifest.name || result.version !== manifest.version) {
     throw new CmdError(
-      `repository returned ${result.name}@${result.version}, expected ${manifest.name}@${manifest.version}`
+      `Repository returned ${result.name}@${result.version}, expected ${manifest.name}@${manifest.version}`
     );
   }
 
   try {
     await updateModlock(root, result);
   } catch (error) {
-    console.error(
-      `Published ${result.name}@${result.version}, but failed to update local modlock.`
+    env.logger.error(
+      `Published ${result.name}@${result.version}, but failed to update local modlock`
     );
-    console.error(
-      `Recovery: manually record ${result.archiveUrl}, or rerun mod publish ${result.name} only if the repository accepts idempotent same-version publishes.`
+    env.logger.error(
+      `Recovery: manually record ${result.archiveUrl}, or rerun mod publish ${result.name} only if the repository accepts idempotent same-version publishes`
     );
 
     throw error;
   }
 
-  console.log(`Published ${result.name}@${result.version}`);
-  console.log(`Repository: ${result.repositoryUrl}`);
-  console.log(`Archive: ${result.archiveUrl}`);
+  env.logger.info(`Published ${result.name}@${result.version}`);
+  env.logger.info(`Repository: ${result.repositoryUrl}`);
+  env.logger.info(`Archive: ${result.archiveUrl}`);
+});
+
+registerCommand({
+  name: 'publish',
+  description: 'Publish one root module to the repository',
+  main: publish
 });
 
 async function assertPublishPreflight(manifest: ModuleManifest) {
@@ -82,18 +100,18 @@ async function assertPublishPreflight(manifest: ModuleManifest) {
   const rootVersion = modlock.modules[ROOT_NODE]?.dependencies[manifest.name];
   if (rootVersion !== manifest.version) {
     throw new CmdError(
-      `${manifest.name}@${manifest.version}: module is not installed as a root module`
+      `${manifest.name}@${manifest.version}: Module is not installed as a root module`
     );
   }
 
   if (!modlock.modules[key]) {
-    throw new CmdError(`${key}: module is missing from modlock`);
+    throw new CmdError(`${key}: Module is missing from modlock`);
   }
 
   const expected = await createNextModlock();
   if (!haveSameDependencyGraph(expected, modlock)) {
     throw new CmdError(
-      `modlock dependency graph is stale; run mod tidy before publishing ${manifest.name}`
+      `Modlock dependency graph is stale; run mod tidy before publishing ${manifest.name}`
     );
   }
 }
@@ -104,6 +122,7 @@ async function createPublishArchive(root: string) {
     throw new CmdError(`${root}: ${MODULE} missing`);
   }
 
+  const archiveRoot = basename(root);
   const entries = await Promise.all(
     files.map(async (path) => {
       const absolute = resolve(root, path);
@@ -111,7 +130,7 @@ async function createPublishArchive(root: string) {
 
       return {
         content,
-        path,
+        path: `${archiveRoot}/${path}`,
         mode: stats.mode
       };
     })
@@ -143,15 +162,15 @@ function assertPublishResult(value: unknown): asserts value is PublishResult {
     typeof value['description'] !== 'string' ||
     typeof value['version'] !== 'string'
   ) {
-    throw new CmdError('repository returned invalid publish result');
+    throw new CmdError('Repository returned invalid publish result');
   }
 
   if (typeof value['archiveUrl'] !== 'string') {
-    throw new CmdError('repository returned invalid archive URL');
+    throw new CmdError('Repository returned invalid archive URL');
   }
 
   if (typeof value['repositoryUrl'] !== 'string') {
-    throw new CmdError('repository returned invalid repository URL');
+    throw new CmdError('Repository returned invalid repository URL');
   }
 }
 
@@ -163,13 +182,13 @@ async function updateModlock(root: string, result: PublishResult) {
   const version = modlock.modules[ROOT_NODE]?.dependencies[result.name];
   if (version !== result.version) {
     throw new CmdError(
-      `${result.name}@${result.version}: module is not installed as a root module`
+      `${result.name}@${result.version}: Module is not installed as a root module`
     );
   }
 
   const node = modlock.modules[key];
   if (!node) {
-    throw new CmdError(`${key}: module is missing from modlock`);
+    throw new CmdError(`${key}: Module is missing from modlock`);
   }
 
   node.integrity = await createModuleIntegrity(root);

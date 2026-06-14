@@ -1,14 +1,14 @@
 import { cp, mkdir, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { CmdError, type CommandHandler } from '../cmd.ts';
+import { CmdError, registerCommand } from '../cmd.ts';
 import { CACHE, MODULES, ROOT_NODE } from './common/constants.ts';
 import { createModuleIntegrity } from './common/helpers/integrity.ts';
 import { createModuleKey } from './common/helpers/key.ts';
-import { withModuleLock } from './common/helpers/lock.ts';
 import { assertModuleName } from './common/helpers/manifest.ts';
 import { readModlock } from './common/helpers/modlock.ts';
 import { exists } from './common/helpers/path.ts';
+import { withModuleTransaction } from './common/helpers/transaction.ts';
 import type { Modlock } from './common/types.ts';
 import { tidyWorkspace } from './tidy.ts';
 
@@ -19,34 +19,38 @@ interface RemovePlan {
   root: string;
 }
 
-export const remove: CommandHandler = withModuleLock('remove', async (args) => {
-  const { positionals } = parseArgs({
-    strict: true,
-    allowPositionals: true,
-    args
-  });
+registerCommand({
+  name: 'remove',
+  description: 'Remove root modules from the workspace',
+  main: withModuleTransaction('remove', async (args) => {
+    const { positionals } = parseArgs({
+      strict: true,
+      allowPositionals: true,
+      args
+    });
 
-  if (positionals.length === 0) {
-    throw new CmdError('module name is required');
-  }
+    if (positionals.length === 0) {
+      throw new CmdError('Module name is required');
+    }
 
-  for (const name of positionals) {
-    assertModuleName(name);
-  }
+    for (const name of positionals) {
+      assertModuleName(name);
+    }
 
-  const modlock = await readModlock();
+    const modlock = await readModlock();
 
-  const names = new Set(positionals);
-  const dependencies = modlock.modules[ROOT_NODE]?.dependencies ?? {};
+    const names = new Set(positionals);
+    const dependencies = modlock.modules[ROOT_NODE]?.dependencies ?? {};
 
-  await mkdir(CACHE, {
-    recursive: true
-  });
+    await mkdir(CACHE, {
+      recursive: true
+    });
 
-  const plans = await createRemovePlans(names, dependencies, modlock);
-  await executeRemovePlans(plans);
+    const plans = await createRemovePlans(names, dependencies, modlock);
+    await executeRemovePlans(plans);
 
-  await tidyWorkspace();
+    await tidyWorkspace();
+  })
 });
 
 async function createRemovePlans(
@@ -59,7 +63,7 @@ async function createRemovePlans(
   for (const name of names) {
     const version = dependencies[name];
     if (!version) {
-      throw new CmdError(`${name}: module is not installed at root level`);
+      throw new CmdError(`${name}: Module is not installed at root level`);
     }
 
     const key = createModuleKey(name, version);
@@ -114,21 +118,19 @@ async function assertRootCanBeRemoved(options: {
   root: string;
 }) {
   const node = options.modlock.modules[options.key];
-  const actual = await createModuleIntegrity(options.root);
 
-  if (node?.integrity) {
-    if (actual !== node.integrity) {
-      throw new CmdError(
-        `${options.key}: root module has local changes; publish, reinstall, or manually resolve it before removing`
-      );
-    }
-
+  if (!options.preserveInCache) {
     return;
   }
 
-  if (options.preserveInCache && (await exists(options.cache))) {
+  if (!node?.integrity) {
+    throw new CmdError(`${options.key}: Root module is still used and has no locked integrity`);
+  }
+
+  const actual = await createModuleIntegrity(options.root);
+  if (actual !== node.integrity) {
     throw new CmdError(
-      `${options.key}: root module has no locked integrity and cache already exists; publish, reinstall, or manually resolve the local copy before removing`
+      `${options.key}: Root module has local changes; publish, reinstall, or manually resolve it before removing`
     );
   }
 }

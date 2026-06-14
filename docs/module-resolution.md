@@ -12,14 +12,18 @@ The module system documentation is split by responsibility:
 
 The module CLI is implemented in `scripts/mod.ts`.
 
-- [`mod init`](mod/cmd/init.md): initializes `modrc.json` and creates a minimal `modlock.json` when
-  it does not exist.
 - [`mod create <module>`](mod/cmd/create.md): creates a new editable root module under
   `src/modules/<module>`.
-- [`mod install`](mod/cmd/install.md): installs all locked modules from `resolved` URLs and verifies
+- [`mod repo get`](mod/cmd/repo.md): prints the configured repository URL.
+- [`mod repo set <url>`](mod/cmd/repo.md): validates the repository with `GET /ping` and writes
+  `modrc.json`.
+- [`mod download`](mod/cmd/download.md): installs all locked modules from `resolved` URLs and verifies
   `integrity`.
-- [`mod install <module[@version]>...`](mod/cmd/install.md): installs or updates requested modules
+- [`mod get <module[@version]>...`](mod/cmd/get.md): installs or updates requested modules
   as editable root modules.
+- [`mod graph`](mod/cmd/graph.md): prints the selected lockfile graph.
+- [`mod verify`](mod/cmd/verify.md): verifies installed modules described by the lockfile.
+- [`mod why <module[@version]>`](mod/cmd/why.md): prints why a module is reachable.
 - [`mod tidy`](mod/cmd/tidy.md): rebuilds `modlock.json` from root modules and reachable cached
   dependencies, cleans unused cache directories, and regenerates TypeScript configs.
 - [`mod remove <module>...`](mod/cmd/remove.md): removes root modules, preserves still-needed

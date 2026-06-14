@@ -15,6 +15,10 @@ export async function collectModuleFiles(root: string) {
       const absolute = resolve(directory, entry.name);
 
       if (entry.isDirectory()) {
+        if (entry.name === 'modules') {
+          continue;
+        }
+
         await visit(absolute);
 
         continue;

@@ -20,8 +20,9 @@ src/modules/modlock.json
 
 Runtime resolution and generated TypeScript configs must follow the same lockfile graph exactly.
 
-Install, remove, and tidy are responsible for maintaining that graph. Build copies manifests from
-the physical module layout. Publish and install are responsible for writing artifact integrity.
+`get`, `download`, `remove`, and `tidy` are responsible for maintaining that graph. Build copies
+manifests from the physical module layout. Publish, get, and download are responsible for writing
+or verifying artifact integrity.
 
 ## Invariants
 

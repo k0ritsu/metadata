@@ -10,7 +10,7 @@ Dependency graph construction starts from root modules.
 
 Root only wins on exact name and version match.
 
-Commands such as `tidy`, `install`, and `remove` perform this construction and write concrete
+Commands such as `tidy`, `get`, and `remove` perform this construction and write concrete
 dependency versions into `modlock.json`.
 
 Runtime resolution does not read `module.json` and does not choose versions. It only consumes the
