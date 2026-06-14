@@ -21,7 +21,7 @@ interface PublishResult extends Pick<ModuleManifest, 'name' | 'description' | 'v
   repositoryUrl: string;
 }
 
-export const publish = withModuleTransaction('publish', async (args, env) => {
+export const publish = withModuleTransaction('publish', async (args, context) => {
   const { positionals, values } = parseArgs({
     strict: true,
     allowPositionals: true,
@@ -72,19 +72,19 @@ export const publish = withModuleTransaction('publish', async (args, env) => {
   try {
     await updateModlock(root, result);
   } catch (error) {
-    env.logger.error(
+    context.logger.error(
       `Published ${result.name}@${result.version}, but failed to update local modlock`
     );
-    env.logger.error(
+    context.logger.error(
       `Recovery: manually record ${result.archiveUrl}, or rerun mod publish ${result.name} only if the repository accepts idempotent same-version publishes`
     );
 
     throw error;
   }
 
-  env.logger.info(`Published ${result.name}@${result.version}`);
-  env.logger.info(`Repository: ${result.repositoryUrl}`);
-  env.logger.info(`Archive: ${result.archiveUrl}`);
+  context.logger.info(`Published ${result.name}@${result.version}`);
+  context.logger.info(`Repository: ${result.repositoryUrl}`);
+  context.logger.info(`Archive: ${result.archiveUrl}`);
 });
 
 registerCommand({

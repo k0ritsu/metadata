@@ -9,7 +9,7 @@ import type { Modlock } from './common/types.ts';
 registerCommand({
   name: 'why',
   description: 'Explain why a module is reachable from the root set',
-  async main(args, env) {
+  async main(args, context) {
     const { positionals } = parseArgs({
       strict: true,
       allowPositionals: true,
@@ -31,14 +31,14 @@ registerCommand({
     const target = parseWhySpec(spec, modlock);
     const path = findPath(target, modlock);
 
-    env.logger.info(`# ${target}`);
+    context.logger.info(`# ${target}`);
     if (!path) {
-      env.logger.info('(root module set does not need module)');
+      context.logger.info('(root module set does not need module)');
 
       return;
     }
 
-    env.logger.info(path.join('\n'));
+    context.logger.info(path.join('\n'));
   }
 });
 

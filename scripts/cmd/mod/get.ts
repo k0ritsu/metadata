@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 import semver from 'semver';
 import { CmdError, registerCommand, type CmdContext } from '../cmd.ts';
 import { CACHE, MODULE, MODULES } from './common/constants.ts';
-import { installArtifactAtRoot, type InstallMetadata } from './common/helpers/install-module.ts';
+import { installArtifactAtRoot, type InstallMetadata } from './common/helpers/install.ts';
 import { createModuleIntegrity } from './common/helpers/integrity.ts';
 import { createModuleKey } from './common/helpers/key.ts';
 import { assertModuleName, isSemver, readModuleManifest } from './common/helpers/manifest.ts';
@@ -33,7 +33,7 @@ interface InstalledModule {
 
 const LATEST = 'latest';
 
-export const get = withModuleTransaction('get', async (args, env) => {
+export const get = withModuleTransaction('get', async (args, context) => {
   const { positionals, values } = parseArgs({
     strict: true,
     allowPositionals: true,
@@ -54,14 +54,14 @@ export const get = withModuleTransaction('get', async (args, env) => {
   const metadata = new Map<string, InstallMetadata>();
 
   for (const spec of positionals.map(parseInstallSpec)) {
-    await installRequestedRoot(repository, spec, metadata, env);
+    await installRequestedRoot(repository, spec, metadata, context);
   }
 
   const roots = await loadInstalledRoots();
   const installed = new Set<string>();
 
   for (const root of roots.values()) {
-    await installDependencies(repository, root, metadata, roots, installed, env);
+    await installDependencies(repository, root, metadata, roots, installed, context);
   }
 
   await tidyWorkspace();

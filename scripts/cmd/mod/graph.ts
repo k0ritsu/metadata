@@ -9,7 +9,7 @@ const ROOT = 'root';
 registerCommand({
   name: 'graph',
   description: 'Print the selected module dependency graph',
-  async main(args, env) {
+  async main(args, context) {
     parseArgs({
       strict: true,
       allowPositionals: false,
@@ -37,7 +37,7 @@ registerCommand({
       }
     }
 
-    env.logger.info(lines.join('\n'));
+    context.logger.info(lines.join('\n'));
   }
 });
 

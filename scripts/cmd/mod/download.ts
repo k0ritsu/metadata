@@ -1,7 +1,7 @@
 import { parseArgs } from 'util';
 import { CmdError, registerCommand } from '../cmd.ts';
 import { ROOT_NODE } from './common/constants.ts';
-import { installArtifactAtRoot } from './common/helpers/install-module.ts';
+import { installArtifactAtRoot } from './common/helpers/install.ts';
 import { parseModuleKey } from './common/helpers/key.ts';
 import { readModlock, resolveModuleRoot } from './common/helpers/modlock.ts';
 import { withModuleTransaction } from './common/helpers/transaction.ts';
@@ -10,7 +10,7 @@ import { createTsconfigs } from './common/helpers/tsconfig.ts';
 registerCommand({
   name: 'download',
   description: 'Download all modules described by modlock.json',
-  main: withModuleTransaction('download', async (args, env) => {
+  main: withModuleTransaction('download', async (args, context) => {
     parseArgs({
       strict: true,
       allowPositionals: false,
@@ -44,7 +44,7 @@ registerCommand({
         node.resolved,
         {
           expectedIntegrity: node.integrity,
-          logger: env.logger
+          logger: context.logger
         }
       );
       if (metadata.integrity !== node.integrity) {

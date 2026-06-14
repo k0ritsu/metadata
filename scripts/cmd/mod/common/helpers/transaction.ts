@@ -10,12 +10,12 @@ const BACKUP_PREFIX = '.mod-backup-workspace-';
 const ROOT_TSCONFIG_BUILD = resolve('tsconfig.build.json');
 const ROOT_TSCONFIG = resolve(TSCONFIG_PROJECT);
 
-export function withModuleTransaction(cmd: string, handler: CmdMain) {
-  return withModuleLock(cmd, async (args, env) => {
+export function withModuleTransaction(command: string, main: CmdMain) {
+  return withModuleLock(command, async (args, env) => {
     const backup = await createWorkspaceBackup();
 
     try {
-      await handler(args, env);
+      await main(args, env);
       await removeWorkspaceBackup(backup);
     } catch (error) {
       await restoreWorkspaceBackup(backup);

@@ -16,14 +16,14 @@ interface Lock {
   timestamp: string;
 }
 
-export function withModuleLock(cmd: string, handler: CmdMain) {
+export function withModuleLock(command: string, main: CmdMain) {
   const path = resolve(MODULES, LOCK);
 
-  const wrapper: CmdMain = async (args, env) => {
-    await acquireLock(path, cmd);
+  const wrapper: CmdMain = async (args, context) => {
+    await acquireLock(path, command);
 
     try {
-      await handler(args, env);
+      await main(args, context);
     } finally {
       await releaseLock(path);
     }
