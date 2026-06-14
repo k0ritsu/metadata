@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 function writeModule(root: string, name: string, version: string) {
@@ -57,6 +58,26 @@ function run(root: string, args: string[]) {
   }).trim();
 }
 
+function createIntegrity(root: string, moduleRoot: string) {
+  const helperUrl = String(
+    pathToFileURL(resolve('scripts/cmd/mod/common/helpers/integrity.ts'))
+  );
+  return execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '--eval',
+      `const { createModuleIntegrity } = await import(${JSON.stringify(helperUrl)});
+console.log(await createModuleIntegrity(${JSON.stringify(moduleRoot)}));
+`
+    ],
+    {
+      cwd: root,
+      encoding: 'utf8'
+    }
+  ).trim();
+}
+
 test('graph and why read selected edges from modlock', () => {
   const root = mkdtempSync(join(tmpdir(), 'metadata-mod-graph-'));
   writeModlock(root);
@@ -85,11 +106,40 @@ test('verify ignores extra directories outside the lockfile graph', () => {
           }
         },
         'app@1.0.0': {
-          dependencies: {}
+          dependencies: {},
+          integrity: createIntegrity(root, join(modules, 'app'))
         }
       }
     })
   );
 
   assert.equal(run(root, ['verify']), 'All modules verified');
+});
+
+test('verify requires integrity for locked modules', () => {
+  const root = mkdtempSync(join(tmpdir(), 'metadata-mod-verify-'));
+  const modules = join(root, 'src', 'modules');
+
+  mkdirSync(modules, {
+    recursive: true
+  });
+  writeModule(join(modules, 'app'), 'app', '1.0.0');
+  writeFileSync(
+    join(modules, 'modlock.json'),
+    JSON.stringify({
+      lockfileVersion: 1,
+      modules: {
+        '': {
+          dependencies: {
+            app: '1.0.0'
+          }
+        },
+        'app@1.0.0': {
+          dependencies: {}
+        }
+      }
+    })
+  );
+
+  assert.throws(() => run(root, ['verify']), /app@1\.0\.0: Missing integrity/);
 });

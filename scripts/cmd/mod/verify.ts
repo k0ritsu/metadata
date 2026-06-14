@@ -35,11 +35,13 @@ registerCommand({
         throw new CmdError(`${key}: Installed manifest identity mismatch`);
       }
 
-      if (node.integrity) {
-        const actual = await createModuleIntegrity(root);
-        if (actual !== node.integrity) {
-          throw new CmdError(`${key}: Integrity verification failed`);
-        }
+      if (!node.integrity) {
+        throw new CmdError(`${key}: Missing integrity`);
+      }
+
+      const actual = await createModuleIntegrity(root);
+      if (actual !== node.integrity) {
+        throw new CmdError(`${key}: Integrity verification failed`);
       }
     }
 

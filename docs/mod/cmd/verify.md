@@ -12,4 +12,5 @@ The lockfile is the source of truth. Extra directories in `src/modules` or `.cac
 
 - every dependency edge points to a lockfile entry;
 - each described module has a matching `module.json`;
-- locked integrity matches files on disk when integrity is present.
+- every non-root module entry has locked `integrity`;
+- locked integrity matches files on disk.
