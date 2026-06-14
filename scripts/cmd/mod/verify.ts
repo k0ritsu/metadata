@@ -10,7 +10,7 @@ import type { Modlock } from './common/types.ts';
 registerCommand({
   name: 'verify',
   description: 'Verify modules and dependency edges from modlock.json',
-  async main(args, env) {
+  async main(args, context) {
     parseArgs({
       strict: true,
       allowPositionals: false,
@@ -43,7 +43,7 @@ registerCommand({
       }
     }
 
-    env.logger.info('All modules verified');
+    context.logger.info('All modules verified');
   }
 });
 
