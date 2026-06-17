@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { IncomingMessage } from 'node:http';
 import type { Config } from './config/types.js';
 import type { Shutdown } from './graceful-shutdown/types.js';
 import { loadModules } from './loader/loader.js';
@@ -23,6 +24,13 @@ export async function bootstrap(config: Config): Promise<Shutdown> {
       if (typeof requestId !== 'string') {
         requestId = randomUUID();
       }
+
+      logger.info(
+        `Incoming request ${req.method} ${req.url}`,
+        'requestId',
+        requestId,
+        ...extractRequestInfo(req)
+      );
 
       return store.run(
         {
@@ -61,4 +69,15 @@ export async function bootstrap(config: Config): Promise<Shutdown> {
 
     await Promise.all([resolver.promise, ...hooks.map(({ shutdown } = {}) => shutdown?.())]);
   };
+}
+
+function extractRequestInfo(req: IncomingMessage) {
+  return [
+    'userAgent',
+    req.headers['user-agent'],
+    'remoteAddress',
+    req.socket.remoteAddress,
+    'forwardedFor',
+    req.headers['x-forwarded-for']
+  ];
 }
