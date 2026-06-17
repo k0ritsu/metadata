@@ -119,6 +119,44 @@ test('router use applies to routes registered after it', async () => {
   assert.equal(after.body, 'after');
 });
 
+test('router groups isolate middleware between sibling groups', async () => {
+  const router = createRouter(config, logger);
+  const calls: string[] = [];
+
+  router.group('', (group) => {
+    group.use(async (_req, _params, _searchParams, next) => {
+      calls.push('first-before');
+
+      const res = await next();
+
+      calls.push('first-after');
+
+      return res;
+    });
+
+    group.route('GET', '/first', async () => {
+      calls.push('first-handler');
+
+      return new Response('first');
+    });
+  });
+
+  router.group('', (group) => {
+    group.route('GET', '/second', async () => {
+      calls.push('second-handler');
+
+      return new Response('second');
+    });
+  });
+
+  const first = await inject(router, 'GET', '/first');
+  const second = await inject(router, 'GET', '/second');
+
+  assert.equal(first.body, 'first');
+  assert.equal(second.body, 'second');
+  assert.deepEqual(calls, ['first-before', 'first-handler', 'first-after', 'second-handler']);
+});
+
 interface InjectedResponse {
   body: string;
   headers: Headers;
