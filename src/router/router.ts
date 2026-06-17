@@ -10,7 +10,7 @@ import type { Logger } from '../logger/types.js';
 
 class RouterError extends Error {}
 
-type HttpMethod =
+export type HttpMethod =
   | 'GET'
   | 'HEAD'
   | 'POST'
@@ -21,7 +21,7 @@ type HttpMethod =
   | 'OPTIONS'
   | 'TRACE';
 
-interface HttpHandler {
+export interface HttpHandler {
   (
     req: Request,
     params: Record<string, string | undefined>,
@@ -29,7 +29,7 @@ interface HttpHandler {
   ): Promise<Response>;
 }
 
-interface HttpMiddleware {
+export interface HttpMiddleware {
   (
     req: Request,
     params: Record<string, string | undefined>,
@@ -38,11 +38,13 @@ interface HttpMiddleware {
   ): Promise<Response>;
 }
 
-interface RouterGroup {
+export interface RouterGroup {
   route(method: HttpMethod, path: string, handler: HttpHandler): void;
   group(prefix: string, callback: (router: RouterGroup) => void): void;
   use(middleware: HttpMiddleware): void;
 }
+
+export type Router = ReturnType<typeof createRouter>;
 
 export function createRouter(config: Config, logger: Logger) {
   const router = Router({

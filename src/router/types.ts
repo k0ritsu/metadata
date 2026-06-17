@@ -1,3 +1,1 @@
-import type { createRouter } from './router.js';
-
-export type Router = ReturnType<typeof createRouter>;
+export type { HttpHandler, HttpMethod, HttpMiddleware, Router, RouterGroup } from './router.js';

@@ -1,9 +1,9 @@
 import type { Logger } from '../logger/types.js';
-import type { Router } from '../router/types.js';
+import type { RouterGroup } from '../router/types.js';
 import type { Store } from '../store/types.js';
 
 export interface Context {
-  router: Router;
+  router: RouterGroup;
   logger: Logger;
   modules: Array<
     Omit<ModuleManifest, 'main'> & {
