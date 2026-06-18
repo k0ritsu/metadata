@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { IncomingMessage } from 'node:http';
 import type { Config } from './config/types.js';
 import type { Shutdown } from './graceful-shutdown/types.js';
 import { loadModules } from './loader/loader.js';
 import { createJsonHandler, createLogger } from './logger/logger.js';
 import { createRouter } from './router/router.js';
-import { createServer } from './server.js';
+import { createServer, extractRequestInfo } from './server.js';
 import { createStore } from './store/store.js';
 
 export async function bootstrap(config: Config): Promise<Shutdown> {
@@ -40,7 +39,8 @@ export async function bootstrap(config: Config): Promise<Shutdown> {
       );
     },
     {
-      port: config.HTTP_PORT
+      port: config.HTTP_PORT,
+      version: 'http1.1'
     }
   );
 
@@ -79,15 +79,4 @@ export async function bootstrap(config: Config): Promise<Shutdown> {
 
     await Promise.all([resolver.promise, ...hooks.map(({ shutdown } = {}) => shutdown?.())]);
   };
-}
-
-function extractRequestInfo(req: IncomingMessage) {
-  return [
-    'userAgent',
-    req.headers['user-agent'],
-    'remoteAddress',
-    req.socket.remoteAddress,
-    'forwardedFor',
-    req.headers['x-forwarded-for']
-  ];
 }

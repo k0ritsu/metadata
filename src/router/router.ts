@@ -1,5 +1,4 @@
 import Router from 'find-my-way';
-import type { IncomingMessage } from 'node:http';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Config } from '../config/types.js';
@@ -7,6 +6,7 @@ import { HttpError } from '../errors/http-error.js';
 import { InternalServerError } from '../errors/internal-server-error.js';
 import { NotFound } from '../errors/not-found.js';
 import type { Logger } from '../logger/types.js';
+import type { HttpRequest, HttpResponse, HttpVersion } from '../server.js';
 
 class RouterError extends Error {}
 
@@ -44,11 +44,16 @@ export interface RouterGroup {
   use(middleware: HttpMiddleware): void;
 }
 
-export type Router = ReturnType<typeof createRouter>;
+export type Router<V extends HttpVersion = HttpVersion> = ReturnType<typeof createRouter<V>>;
 
-export function createRouter(config: Config, logger: Logger) {
-  const router = Router({
-    defaultRoute(req, res) {
+export function createRouter<V extends HttpVersion>(config: Config, logger: Logger) {
+  const router = Router<
+    {
+      'http1.1': Router.HTTPVersion.V1;
+      http2: Router.HTTPVersion.V2;
+    }[V]
+  >({
+    defaultRoute(req: HttpRequest, res: HttpResponse) {
       const err = new NotFound(undefined, undefined, req.url);
 
       return res
@@ -62,54 +67,57 @@ export function createRouter(config: Config, logger: Logger) {
   function createRouterGroup(prefix = '', middlewares: HttpMiddleware[] = []) {
     return {
       route(method: HttpMethod, path: string, handler: HttpHandler) {
-        path = normalizePath(prefix, path);
         handler = composeMiddleware([...middlewares], handler);
 
-        router.on(method, path, async (req, res, params, _, searchParams) => {
-          try {
-            const result = await handler(
-              new Request(new URL(String(req.url), `http://localhost:${config.HTTP_PORT}`), {
-                duplex: 'half',
-                method,
-                headers: extractHeaders(req),
-                body: extractBody(req)
-              }),
-              params,
-              new URLSearchParams(searchParams)
-            );
+        router.on(
+          method,
+          normalizePath(prefix, path),
+          async (req: HttpRequest, res: HttpResponse, params, _, searchParams) => {
+            try {
+              const result = await handler(
+                new Request(new URL(String(req.url), `http://localhost:${config.HTTP_PORT}`), {
+                  duplex: 'half',
+                  method,
+                  headers: extractHeaders(req),
+                  body: extractBody(req)
+                }),
+                params,
+                new URLSearchParams(searchParams)
+              );
 
-            res.writeHead(result.status, result.statusText, Object.fromEntries(result.headers));
+              res.writeHead(result.status, result.statusText, Object.fromEntries(result.headers));
 
-            if (result.body) {
-              await pipeline(Readable.fromWeb(result.body), res);
+              if (result.body) {
+                await pipeline(Readable.fromWeb(result.body), res);
 
-              return res;
-            }
+                return res;
+              }
 
-            return res.end();
-          } catch (err) {
-            switch (true) {
-              case err instanceof HttpError:
+              return res.end();
+            } catch (err) {
+              switch (true) {
+                case err instanceof HttpError:
+                  return res
+                    .writeHead(err.status, err.title, {
+                      'content-type': 'application/problem+json'
+                    })
+                    .end(JSON.stringify(err.withInstance(req.url)));
+              }
+
+              logger.error(String(err));
+
+              {
+                const err = new InternalServerError(undefined, undefined, req.url);
+
                 return res
                   .writeHead(err.status, err.title, {
                     'content-type': 'application/problem+json'
                   })
-                  .end(JSON.stringify(err.withInstance(req.url)));
-            }
-
-            logger.error(String(err));
-
-            {
-              const err = new InternalServerError(undefined, undefined, req.url);
-
-              return res
-                .writeHead(err.status, err.title, {
-                  'content-type': 'application/problem+json'
-                })
-                .end(JSON.stringify(err));
+                  .end(JSON.stringify(err));
+              }
             }
           }
-        });
+        );
       },
       group(path: string, callback: (router: RouterGroup) => void) {
         path = normalizePath(prefix, path);
@@ -169,7 +177,7 @@ function normalizePath(...paths: string[]) {
     .join('/')}`;
 }
 
-function extractBody(req: IncomingMessage) {
+function extractBody(req: HttpRequest) {
   if (hasBody(req)) {
     return Readable.from(req);
   }
@@ -177,7 +185,7 @@ function extractBody(req: IncomingMessage) {
   return null;
 }
 
-function hasBody(req: IncomingMessage) {
+function hasBody(req: HttpRequest) {
   const { method, headers } = req;
   switch (method) {
     case 'HEAD':
@@ -188,7 +196,7 @@ function hasBody(req: IncomingMessage) {
   return headers['content-length'] !== undefined || headers['transfer-encoding'] !== undefined;
 }
 
-function extractHeaders(req: IncomingMessage) {
+function extractHeaders(req: HttpRequest) {
   return Object.entries(req.headers).reduce((acc, [key, val]) => {
     switch (true) {
       case typeof val === 'string':
