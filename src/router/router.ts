@@ -43,6 +43,8 @@ export interface HttpMiddleware {
 }
 
 interface HttpContext {
+  abortSignal: AbortSignal;
+  closed: Promise<void>;
   httpVersion: HttpVersion;
   params: Record<string, string | undefined>;
   searchParams: URLSearchParams;
@@ -84,7 +86,7 @@ export function createRouter<V extends HttpVersion>(config: Config, logger: Logg
           method,
           normalizePath(prefix, path),
           async (req: HttpRequest, res: HttpResponse, params, _, searchParams) => {
-            const context = createHttpContext(req, params, searchParams, config);
+            const context = createHttpContext(req, res, params, searchParams, config);
             try {
               const result = await handler(
                 new Request(createRequestUrl(req, config), {
@@ -210,26 +212,62 @@ function getConfiguredScheme(config: Config) {
 
 function createHttpContext(
   req: HttpRequest,
+  res: HttpResponse,
   params: Record<string, string | undefined>,
   searchParams: Record<string, string>,
   config: Config
-): HttpContext {
+) {
   let httpVersion = config.HTTP_VERSION;
 
   switch (true) {
     case req.httpVersion?.startsWith('2'):
       httpVersion = 'http2';
       break;
-    case typeof req.httpVersion !== 'undefined':
+    case req.httpVersion?.startsWith('1'):
       httpVersion = 'http1.1';
       break;
   }
 
   return {
+    ...createRequestLifecycle(req, res),
     httpVersion,
     params,
     searchParams: new URLSearchParams(searchParams),
     trailers: new Headers()
+  } satisfies HttpContext;
+}
+
+function createRequestLifecycle(req: HttpRequest, res: HttpResponse) {
+  const abortController = new AbortController();
+  const resolver = Promise.withResolvers<void>();
+
+  let settled = false;
+
+  const finish = () => {
+    if (settled) {
+      return;
+    }
+
+    settled = true;
+    resolver.resolve();
+  };
+
+  const abort = () => {
+    if (!abortController.signal.aborted) {
+      abortController.abort();
+    }
+
+    finish();
+  };
+
+  req.once('aborted', abort);
+  req.once('close', abort);
+  res.once('close', finish);
+  res.once('finish', finish);
+
+  return {
+    abortSignal: abortController.signal,
+    closed: resolver.promise
   };
 }
 

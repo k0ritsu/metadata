@@ -254,6 +254,56 @@ test('router advertises trailers for http1 responses', async () => {
   assert.equal(res.trailers.get('grpc-status'), '0');
 });
 
+test('router resolves context closed when response finishes', async () => {
+  const router = createRouter(config, logger);
+  let closed: Promise<void> | undefined;
+
+  router.route('GET', '/closed', async (_req, context) => {
+    closed = context.closed;
+
+    return new Response('ok');
+  });
+
+  const res = await inject(router, 'GET', '/closed');
+
+  await closed;
+  assert.equal(res.body, 'ok');
+});
+
+test('router aborts context signal when request closes before handler completes', async () => {
+  const router = createRouter(config, logger);
+  let abortSignal: AbortSignal | undefined;
+  let release!: () => void;
+
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  router.route('POST', '/abort', async (_req, context) => {
+    abortSignal = context.abortSignal;
+
+    await wait;
+
+    return new Response('done');
+  });
+
+  const pending = inject(router, 'POST', '/abort', {
+    autoCloseRequest: false
+  });
+
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+
+  assert.equal(abortSignal?.aborted, false);
+
+  pending.req.destroy();
+  release();
+
+  await pending.response;
+  assert.equal(abortSignal?.aborted, true);
+});
+
 interface InjectedResponse {
   body: string;
   headers: Headers;
@@ -279,22 +329,25 @@ interface MockResponse extends Writable {
 }
 
 interface InjectOptions {
+  autoCloseRequest?: boolean;
   body?: string | Uint8Array;
   headers?: Record<string, string>;
   httpVersion?: string;
 }
 
-async function inject(
+function inject(
   router: Router,
   method: string,
   url: string,
   options: InjectOptions = {}
-): Promise<InjectedResponse> {
+): Promise<InjectedResponse> & { req: MockRequest; response: Promise<InjectedResponse> } {
   let bodySent = false;
   const req = new Readable({
     read() {
       if (bodySent) {
-        this.push(null);
+        if (options.autoCloseRequest !== false) {
+          this.push(null);
+        }
 
         return;
       }
@@ -304,7 +357,9 @@ async function inject(
         this.push(options.body);
       }
 
-      this.push(null);
+      if (options.autoCloseRequest !== false) {
+        this.push(null);
+      }
     }
   }) as MockRequest;
 
@@ -343,13 +398,16 @@ async function inject(
 
   router.lookup(req as unknown as IncomingMessage, res as unknown as ServerResponse);
 
-  await finished;
-
-  return {
+  const response = finished.then(() => ({
     body: Buffer.concat(chunks).toString('utf8'),
     headers: new Headers(res.headers),
     status: res.statusCode,
     statusText: res.statusText,
     trailers: new Headers(res.trailers)
-  };
+  }));
+
+  return Object.assign(response, {
+    req,
+    response
+  });
 }
