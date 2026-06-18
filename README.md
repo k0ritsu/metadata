@@ -32,6 +32,9 @@ Required application variables:
 | `APP_NAME`        | Application name used in startup logs                  | `metadata` |
 | `APP_VERSION`     | Application version used in startup logs               | `1.0.0`    |
 | `HTTP_PORT`       | HTTP server port                                       | `3000`     |
+| `HTTP_VERSION`    | HTTP transport version: `http1.1` or `http2`           | `http1.1`  |
+| `TLS_CERT_PATH`   | Optional PEM certificate path for HTTPS/secure HTTP/2  | `cert.pem` |
+| `TLS_KEY_PATH`    | Optional PEM private key path for HTTPS/secure HTTP/2  | `key.pem`  |
 | `USE_PARALLELISM` | Start one worker per available CPU when `true`         | `false`    |
 | `LOG_LEVEL`       | Minimum log level: `debug`, `info`, `warn`, or `error` | `debug`    |
 

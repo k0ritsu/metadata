@@ -7,6 +7,11 @@ const Config = Type.Object({
   HTTP_PORT: Type.Number({
     default: 3000
   }),
+  HTTP_VERSION: Type.Union([Type.Literal('http1.1'), Type.Literal('http2')], {
+    default: 'http1.1'
+  }),
+  TLS_CERT_PATH: Type.Optional(Type.String()),
+  TLS_KEY_PATH: Type.Optional(Type.String()),
   USE_PARALLELISM: Type.Boolean({
     default: true
   }),

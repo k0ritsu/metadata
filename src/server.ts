@@ -1,8 +1,6 @@
-import type { IncomingHttpHeaders } from 'node:http';
+import type { IncomingHttpHeaders, OutgoingHttpHeaders } from 'node:http';
 import type { Readable, Writable } from 'node:stream';
 import type { Router } from './router/types.js';
-
-class ServerError extends Error {}
 
 export type HttpVersion = 'http1.1' | 'http2';
 
@@ -10,19 +8,23 @@ export interface HttpRequest extends Readable {
   method?: string | undefined;
   url?: string | undefined;
   headers: IncomingHttpHeaders;
+  httpVersion?: string | undefined;
 }
 
 export interface HttpResponse extends Writable {
-  writeHead(status: number, statusMessage: string, headers: IncomingHttpHeaders): this;
+  addTrailers(headers: OutgoingHttpHeaders): void;
+  writeHead(status: number, statusMessage: string, headers: OutgoingHttpHeaders): this;
 }
 
 interface Config<V> {
   port: number;
   version: V;
-  tls?: {
-    cert: string;
-    key: string;
-  };
+  tls?:
+    | {
+        cert: string;
+        key: string;
+      }
+    | undefined;
 }
 
 export async function createServer<V extends HttpVersion>(
@@ -76,7 +78,7 @@ export async function createServer<V extends HttpVersion>(
       return server;
     }
     default: {
-      throw new ServerError('unknown http version');
+      throw new Error('Unknown http version');
     }
   }
 }

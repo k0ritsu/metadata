@@ -12,6 +12,7 @@ const config: Config = {
   APP_NAME: 'test',
   APP_VERSION: '0.0.0',
   HTTP_PORT: 3000,
+  HTTP_VERSION: 'http1.1',
   LOG_LEVEL: 'error',
   USE_PARALLELISM: false
 };
@@ -27,7 +28,7 @@ test('router use composes middleware around route handlers', async () => {
   const router = createRouter(config, logger);
   const calls: string[] = [];
 
-  router.use(async (_req, _params, _searchParams, next) => {
+  router.use(async (_req, _context, next) => {
     calls.push('root-before');
 
     const res = await next();
@@ -38,7 +39,9 @@ test('router use composes middleware around route handlers', async () => {
   });
 
   router.group('/api', (group) => {
-    group.use(async (_req, params, searchParams, next) => {
+    group.use(async (_req, context, next) => {
+      const { params, searchParams } = context;
+
       calls.push(`group:${params['id']}:${searchParams.get('q')}`);
 
       return next();
@@ -94,7 +97,7 @@ test('router use applies to routes registered after it', async () => {
     return new Response('before');
   });
 
-  router.use(async (_req, _params, _searchParams, next) => {
+  router.use(async (_req, _context, next) => {
     const res = await next();
 
     return new Response(await res.text(), {
@@ -124,7 +127,7 @@ test('router groups isolate middleware between sibling groups', async () => {
   const calls: string[] = [];
 
   router.group('', (group) => {
-    group.use(async (_req, _params, _searchParams, next) => {
+    group.use(async (_req, _context, next) => {
       calls.push('first-before');
 
       const res = await next();
@@ -157,15 +160,111 @@ test('router groups isolate middleware between sibling groups', async () => {
   assert.deepEqual(calls, ['first-before', 'first-handler', 'first-after', 'second-handler']);
 });
 
+test('router maps http2 pseudo headers into the web request url and body', async () => {
+  const router = createRouter(config, logger);
+
+  router.route('POST', '/items', async (req) => {
+    assert.equal(req.url, 'https://example.test/items?q=value');
+    assert.deepEqual(
+      Array.from(req.headers.keys()).filter((key) => key.startsWith(':')),
+      []
+    );
+
+    return new Response(await req.text());
+  });
+
+  const res = await inject(router, 'POST', '/items?q=value', {
+    body: 'payload',
+    headers: {
+      ':authority': 'example.test',
+      ':scheme': 'https'
+    }
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body, 'payload');
+});
+
+test('router filters hop-by-hop response headers', async () => {
+  const router = createRouter(config, logger);
+
+  router.route('GET', '/headers', async () => {
+    return new Response('ok', {
+      headers: {
+        connection: 'close',
+        'transfer-encoding': 'chunked',
+        'x-safe': 'yes'
+      }
+    });
+  });
+
+  const res = await inject(router, 'GET', '/headers');
+
+  assert.equal(res.headers.get('connection'), null);
+  assert.equal(res.headers.get('transfer-encoding'), null);
+  assert.equal(res.headers.get('x-safe'), 'yes');
+});
+
+test('router sends trailers from handler context', async () => {
+  const router = createRouter(config, logger);
+
+  router.route('POST', '/grpc.Service/Unary', async (_req, context) => {
+    context.trailers.set('grpc-status', '0');
+    context.trailers.set('grpc-message', '');
+
+    return new Response(new Uint8Array([0, 0, 0, 0, 0]), {
+      headers: {
+        'content-type': 'application/grpc'
+      }
+    });
+  });
+
+  const res = await inject(router, 'POST', '/grpc.Service/Unary', {
+    body: new Uint8Array([0, 0, 0, 0, 0]),
+    headers: {
+      ':authority': 'example.test',
+      ':scheme': 'https',
+      'content-type': 'application/grpc',
+      te: 'trailers'
+    },
+    httpVersion: '2.0'
+  });
+
+  assert.equal(res.headers.get('content-type'), 'application/grpc');
+  assert.equal(res.trailers.get('grpc-status'), '0');
+  assert.equal(res.trailers.get('grpc-message'), '');
+});
+
+test('router advertises trailers for http1 responses', async () => {
+  const router = createRouter(config, logger);
+
+  router.route('POST', '/grpc.Service/Unary', async (_req, context) => {
+    context.trailers.set('grpc-status', '0');
+
+    return new Response(null, {
+      headers: {
+        'content-type': 'application/grpc'
+      }
+    });
+  });
+
+  const res = await inject(router, 'POST', '/grpc.Service/Unary');
+
+  assert.equal(res.headers.get('trailer'), 'grpc-status');
+  assert.equal(res.trailers.get('grpc-status'), '0');
+});
+
 interface InjectedResponse {
   body: string;
   headers: Headers;
   status: number;
   statusText: string;
+  trailers: Headers;
 }
 
 interface MockRequest extends Readable {
   headers: Record<string, string>;
+  httpVersion?: string;
   method: string;
   url: string;
 }
@@ -174,17 +273,43 @@ interface MockResponse extends Writable {
   headers: Record<string, string>;
   statusCode: number;
   statusText: string;
+  trailers: Record<string, string>;
+  addTrailers(headers: Record<string, string>): void;
   writeHead(status: number, statusText: string, headers?: Record<string, string>): this;
 }
 
-async function inject(router: Router, method: string, url: string): Promise<InjectedResponse> {
+interface InjectOptions {
+  body?: string | Uint8Array;
+  headers?: Record<string, string>;
+  httpVersion?: string;
+}
+
+async function inject(
+  router: Router,
+  method: string,
+  url: string,
+  options: InjectOptions = {}
+): Promise<InjectedResponse> {
+  let bodySent = false;
   const req = new Readable({
     read() {
+      if (bodySent) {
+        this.push(null);
+
+        return;
+      }
+
+      bodySent = true;
+      if (options.body !== undefined) {
+        this.push(options.body);
+      }
+
       this.push(null);
     }
   }) as MockRequest;
 
-  req.headers = {};
+  req.headers = options.headers ?? {};
+  req.httpVersion = options.httpVersion;
   req.method = method;
   req.url = url;
 
@@ -199,6 +324,10 @@ async function inject(router: Router, method: string, url: string): Promise<Inje
   res.statusCode = 200;
   res.statusText = '';
   res.headers = {};
+  res.trailers = {};
+  res.addTrailers = (headers) => {
+    res.trailers = headers;
+  };
   res.writeHead = (status, statusText, headers) => {
     res.statusCode = status;
     res.statusText = statusText;
@@ -220,6 +349,7 @@ async function inject(router: Router, method: string, url: string): Promise<Inje
     body: Buffer.concat(chunks).toString('utf8'),
     headers: new Headers(res.headers),
     status: res.statusCode,
-    statusText: res.statusText
+    statusText: res.statusText,
+    trailers: new Headers(res.trailers)
   };
 }

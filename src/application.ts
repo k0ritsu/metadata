@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import type { Config } from './config/types.js';
-import type { Shutdown } from './graceful-shutdown/types.js';
 import { loadModules } from './loader/loader.js';
 import { createJsonHandler, createLogger } from './logger/logger.js';
 import { createRouter } from './router/router.js';
 import { createServer, extractRequestInfo } from './server.js';
 import { createStore } from './store/store.js';
 
-export async function bootstrap(config: Config): Promise<Shutdown> {
+export async function bootstrap(config: Config) {
   const logger = createLogger(
     createJsonHandler({
       level: config.LOG_LEVEL
@@ -39,8 +39,9 @@ export async function bootstrap(config: Config): Promise<Shutdown> {
       );
     },
     {
-      port: config.HTTP_PORT,
-      version: 'http1.1'
+      version: config.HTTP_VERSION,
+      tls: await loadTlsConfig(config),
+      port: config.HTTP_PORT
     }
   );
 
@@ -79,4 +80,18 @@ export async function bootstrap(config: Config): Promise<Shutdown> {
 
     await Promise.all([resolver.promise, ...hooks.map(({ shutdown } = {}) => shutdown?.())]);
   };
+}
+
+async function loadTlsConfig(config: Config) {
+  switch (true) {
+    case typeof config.TLS_CERT_PATH === 'undefined' && typeof config.TLS_KEY_PATH === 'undefined':
+      return;
+    case typeof config.TLS_CERT_PATH !== 'undefined' && typeof config.TLS_KEY_PATH !== 'undefined':
+      return {
+        cert: await readFile(config.TLS_CERT_PATH, 'utf8'),
+        key: await readFile(config.TLS_KEY_PATH, 'utf8')
+      };
+    default:
+      throw new Error('TLS_CERT_PATH and TLS_KEY_PATH must be configured together');
+  }
 }
