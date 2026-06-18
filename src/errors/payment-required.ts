@@ -6,6 +6,6 @@ export class PaymentRequired extends HttpError {
     title = 'Payment required',
     instance = '/'
   ) {
-    super('about:blank', 400, title, detail, instance);
+    super('about:blank', 402, title, detail, instance);
   }
 }
