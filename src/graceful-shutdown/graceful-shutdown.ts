@@ -17,7 +17,7 @@ export function gracefulShutdown(
   config: Config = {
     timeout: DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT
   }
-): void {
+) {
   const { timeout } = config;
 
   let isShuttingDown = false;

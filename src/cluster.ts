@@ -12,10 +12,7 @@ interface Config {
   parallelism: number;
 }
 
-export async function createCluster(
-  createWorker: CreateWorker,
-  config: Config
-): Promise<Shutdown | undefined> {
+export async function createCluster(createWorker: CreateWorker, config: Config) {
   if (cluster.isPrimary) {
     for (let i = 0; i < config.parallelism; i++) {
       cluster.fork(process.env);
