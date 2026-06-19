@@ -11,16 +11,6 @@ import type { HttpRequest, HttpResponse, HttpVersion } from '../server.js';
 
 class RouterError extends Error {}
 
-const CONNECTION_SPECIFIC_HEADERS = new Set([
-  'connection',
-  'keep-alive',
-  'proxy-connection',
-  'te',
-  'trailer',
-  'transfer-encoding',
-  'upgrade'
-]);
-
 export type HttpMethod =
   | 'GET'
   | 'HEAD'
@@ -57,8 +47,17 @@ export interface RouterGroup {
   use(middleware: HttpMiddleware): void;
 }
 
-export type Router<V extends HttpVersion = HttpVersion> = ReturnType<typeof createRouter<V>>;
+const CONNECTION_SPECIFIC_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-connection',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade'
+]);
 
+export type Router<V extends HttpVersion = HttpVersion> = ReturnType<typeof createRouter<V>>;
 export function createRouter<V extends HttpVersion>(config: Config, logger: Logger) {
   const router = Router<
     {
@@ -70,7 +69,7 @@ export function createRouter<V extends HttpVersion>(config: Config, logger: Logg
       const err = new NotFound(undefined, undefined, req.url);
 
       return res
-        .writeHead(err.status, err.title, {
+        .writeHead(err.status, {
           'content-type': 'application/problem+json'
         })
         .end(JSON.stringify(err));
@@ -100,20 +99,23 @@ export function createRouter<V extends HttpVersion>(config: Config, logger: Logg
 
               const headers = extractOutgoingHeaders(result.headers);
 
-              const trailers = extractOutgoingHeaders(context.trailers);
-              const trailersPresent = Object.keys(trailers).length > 0;
+              const initialTrailers = extractOutgoingHeaders(context.trailers);
+              const initialTrailersPresent = Object.keys(initialTrailers).length > 0;
 
-              if (context.httpVersion === 'http1.1' && trailersPresent) {
-                headers.trailer = Object.keys(trailers).join(', ');
+              if (context.httpVersion === 'http1.1' && initialTrailersPresent) {
+                headers.trailer = Object.keys(initialTrailers).join(', ');
               }
 
-              res.writeHead(result.status, result.statusText, headers);
+              res.writeHead(result.status, headers);
 
               if (result.body) {
                 await pipeline(Readable.fromWeb(result.body), res, {
                   end: false
                 });
               }
+
+              const trailers = extractOutgoingHeaders(context.trailers);
+              const trailersPresent = Object.keys(trailers).length > 0;
 
               if (trailersPresent) {
                 res.addTrailers(trailers);
@@ -124,7 +126,7 @@ export function createRouter<V extends HttpVersion>(config: Config, logger: Logg
               switch (true) {
                 case err instanceof HttpError:
                   return res
-                    .writeHead(err.status, err.title, {
+                    .writeHead(err.status, {
                       'content-type': 'application/problem+json'
                     })
                     .end(JSON.stringify(err.withInstance(req.url)));
@@ -136,7 +138,7 @@ export function createRouter<V extends HttpVersion>(config: Config, logger: Logg
                 const err = new InternalServerError(undefined, undefined, req.url);
 
                 return res
-                  .writeHead(err.status, err.title, {
+                  .writeHead(err.status, {
                     'content-type': 'application/problem+json'
                   })
                   .end(JSON.stringify(err));
@@ -261,8 +263,22 @@ function createRequestLifecycle(req: HttpRequest, res: HttpResponse) {
   };
 
   req.once('aborted', abort);
-  req.once('close', abort);
-  res.once('close', finish);
+  req.once('close', () => {
+    if (req.readableEnded) {
+      finish();
+      return;
+    }
+
+    abort();
+  });
+  res.once('close', () => {
+    if (res.writableFinished) {
+      finish();
+      return;
+    }
+
+    abort();
+  });
   res.once('finish', finish);
 
   return {

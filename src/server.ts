@@ -5,15 +5,15 @@ import type { Router } from './router/types.js';
 export type HttpVersion = 'http1.1' | 'http2';
 
 export interface HttpRequest extends Readable {
+  httpVersion?: string | undefined;
   method?: string | undefined;
   url?: string | undefined;
   headers: IncomingHttpHeaders;
-  httpVersion?: string | undefined;
 }
 
 export interface HttpResponse extends Writable {
+  writeHead(status: number, headers: OutgoingHttpHeaders): this;
   addTrailers(headers: OutgoingHttpHeaders): void;
-  writeHead(status: number, statusMessage: string, headers: OutgoingHttpHeaders): this;
 }
 
 interface Config<V> {
@@ -34,10 +34,10 @@ export async function createServer<V extends HttpVersion>(
   switch (true) {
     case matchHttpVersion('http1.1', lookup, config): {
       if (config.tls) {
-        const http = await import('node:https');
+        const https = await import('node:https');
 
         const resolver = Promise.withResolvers<void>();
-        const server = http
+        const server = https
           .createServer(config.tls, lookup)
           .listen(config.port, resolver.resolve.bind(resolver));
 
@@ -58,18 +58,18 @@ export async function createServer<V extends HttpVersion>(
       }
     }
     case matchHttpVersion('http2', lookup, config): {
-      const http = await import('node:http2');
+      const http2 = await import('node:http2');
 
       const resolver = Promise.withResolvers<void>();
       const server = config.tls
-        ? http.createSecureServer(
+        ? http2.createSecureServer(
             {
               allowHTTP1: true,
               ...config.tls
             },
             lookup
           )
-        : http.createServer(lookup);
+        : http2.createServer(lookup);
 
       server.listen(config.port, resolver.resolve.bind(resolver));
 
