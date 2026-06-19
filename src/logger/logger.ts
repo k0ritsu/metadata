@@ -15,7 +15,6 @@ interface Handler {
 }
 
 export type Logger = ReturnType<typeof createLogger>;
-
 export function createLogger(handler: Handler) {
   return {
     debug(msg: string, ...args: unknown[]) {
