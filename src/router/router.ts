@@ -17,6 +17,7 @@ export type HttpMethod =
   | 'POST'
   | 'PUT'
   | 'PATCH'
+  | 'QUERY'
   | 'DELETE'
   | 'CONNECT'
   | 'OPTIONS'
@@ -82,6 +83,7 @@ export function createRouter<V extends HttpVersion>(config: Config, logger: Logg
         handler = composeMiddleware([...middlewares], handler);
 
         router.on(
+          // @ts-expect-error find-my-way supports QUERY at runtime, but its current type declarations omit it.
           method,
           normalizePath(prefix, path),
           async (req: HttpRequest, res: HttpResponse, params, _, searchParams) => {

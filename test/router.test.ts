@@ -185,6 +185,24 @@ test('router maps http2 pseudo headers into the web request url and body', async
   assert.equal(res.body, 'payload');
 });
 
+test('router routes QUERY requests and exposes their body', async () => {
+  const router = createRouter(config, logger);
+
+  router.route('QUERY', '/items', async (req) => {
+    return new Response(await req.text());
+  });
+
+  const res = await inject(router, 'QUERY', '/items', {
+    body: JSON.stringify({ tags: ['featured'] }),
+    headers: {
+      'content-type': 'application/json'
+    }
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body, '{"tags":["featured"]}');
+});
+
 test('router filters hop-by-hop response headers', async () => {
   const router = createRouter(config, logger);
 
