@@ -50,19 +50,17 @@ test('router use composes middleware around route handlers', async () => {
     group.route('GET', '/items/:id', async () => {
       calls.push('handler');
 
-      return new Response('ok', {
-        headers: {
-          'x-handler': 'yes'
-        },
-        statusText: 'Fine'
-      });
+    return new Response('ok', {
+      headers: {
+        'x-handler': 'yes'
+      }
+    });
     });
   });
 
   const res = await inject(router, 'GET', '/api/items/42?q=value');
 
   assert.equal(res.status, 200);
-  assert.equal(res.statusText, 'Fine');
   assert.equal(res.body, 'ok');
   assert.deepEqual(calls, ['root-before', 'group:42:value', 'handler', 'root-after:yes']);
 });
@@ -326,7 +324,6 @@ interface InjectedResponse {
   body: string;
   headers: Headers;
   status: number;
-  statusText: string;
   trailers: Headers;
 }
 
@@ -340,10 +337,9 @@ interface MockRequest extends Readable {
 interface MockResponse extends Writable {
   headers: Record<string, string>;
   statusCode: number;
-  statusText: string;
   trailers: Record<string, string>;
   addTrailers(headers: Record<string, string>): void;
-  writeHead(status: number, statusText: string, headers?: Record<string, string>): this;
+  writeHead(status: number, headers: Record<string, string>): this;
 }
 
 interface InjectOptions {
@@ -395,16 +391,14 @@ function inject(
   }) as MockResponse;
 
   res.statusCode = 200;
-  res.statusText = '';
   res.headers = {};
   res.trailers = {};
   res.addTrailers = (headers) => {
     res.trailers = headers;
   };
-  res.writeHead = (status, statusText, headers) => {
+  res.writeHead = (status, headers) => {
     res.statusCode = status;
-    res.statusText = statusText;
-    res.headers = headers ?? {};
+    res.headers = headers;
 
     return res;
   };
@@ -420,7 +414,6 @@ function inject(
     body: Buffer.concat(chunks).toString('utf8'),
     headers: new Headers(res.headers),
     status: res.statusCode,
-    statusText: res.statusText,
     trailers: new Headers(res.trailers)
   }));
 
