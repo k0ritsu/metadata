@@ -50,11 +50,11 @@ test('router use composes middleware around route handlers', async () => {
     group.route('GET', '/items/:id', async () => {
       calls.push('handler');
 
-    return new Response('ok', {
-      headers: {
-        'x-handler': 'yes'
-      }
-    });
+      return new Response('ok', {
+        headers: {
+          'x-handler': 'yes'
+        }
+      });
     });
   });
 
