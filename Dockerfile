@@ -9,6 +9,8 @@ RUN npm ci
 COPY scripts scripts
 COPY src src
 COPY tsconfig*.json ./
+RUN node scripts/mod.ts download && \
+  node scripts/mod.ts verify
 RUN NODE_ENV=production npm run build && \
   npm prune --production
 
