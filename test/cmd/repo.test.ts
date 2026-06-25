@@ -12,6 +12,7 @@ function readJson(path: string) {
 
 test('repo set validates ping and writes repository config', () => {
   const root = mkdtempSync(join(tmpdir(), 'metadata-mod-repo-'));
+  const cmdUrl = String(pathToFileURL(resolve('scripts/cmd/cmd.ts')));
   const repoUrl = String(pathToFileURL(resolve('scripts/cmd/mod/repo.ts')));
 
   execFileSync(
@@ -20,7 +21,9 @@ test('repo set validates ping and writes repository config', () => {
       '--input-type=module',
       '--eval',
       `
-const { repo } = await import(${JSON.stringify(repoUrl)});
+await import(${JSON.stringify(repoUrl)});
+const { main } = await import(${JSON.stringify(cmdUrl)});
+
 globalThis.fetch = async (input) => {
   const url = new URL(String(input));
   if (url.pathname !== '/ping') {
@@ -32,10 +35,8 @@ globalThis.fetch = async (input) => {
   });
 };
 
-await repo(['set', 'https://repo.local'], {
-  fetch: globalThis.fetch,
-  logger: console
-});
+process.argv = [process.execPath, 'mod', 'repo', 'set', 'https://repo.local'];
+await main();
 `
     ],
     {

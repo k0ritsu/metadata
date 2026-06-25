@@ -33,45 +33,43 @@ interface InstalledModule {
 
 const LATEST = 'latest';
 
-export const get = withModuleTransaction('get', async (args, context) => {
-  const { positionals, values } = parseArgs({
-    strict: true,
-    allowPositionals: true,
-    options: {
-      repository: {
-        type: 'string'
-      }
-    },
-    args
-  });
-
-  if (positionals.length === 0) {
-    throw new CmdError('Module name is required');
-  }
-
-  const modrc = values.repository ? undefined : await readModrc();
-  const repository = resolveRepository(values.repository, modrc);
-  const metadata = new Map<string, InstallMetadata>();
-
-  for (const spec of positionals.map(parseInstallSpec)) {
-    await installRequestedRoot(repository, spec, metadata, context);
-  }
-
-  const roots = await loadInstalledRoots();
-  const installed = new Set<string>();
-
-  for (const root of roots.values()) {
-    await installDependencies(repository, root, metadata, roots, installed, context);
-  }
-
-  await tidyWorkspace();
-  await mergeInstalledMetadata(metadata);
-});
-
 registerCommand({
   name: 'get',
   description: 'Install or update root modules from the repository',
-  main: get
+  main: withModuleTransaction('get', async (args, context) => {
+    const { positionals, values } = parseArgs({
+      strict: true,
+      allowPositionals: true,
+      options: {
+        repository: {
+          type: 'string'
+        }
+      },
+      args
+    });
+
+    if (positionals.length === 0) {
+      throw new CmdError('Module name is required');
+    }
+
+    const modrc = values.repository ? undefined : await readModrc();
+    const repository = resolveRepository(values.repository, modrc);
+    const metadata = new Map<string, InstallMetadata>();
+
+    for (const spec of positionals.map(parseInstallSpec)) {
+      await installRequestedRoot(repository, spec, metadata, context);
+    }
+
+    const roots = await loadInstalledRoots();
+    const installed = new Set<string>();
+
+    for (const root of roots.values()) {
+      await installDependencies(repository, root, metadata, roots, installed, context);
+    }
+
+    await tidyWorkspace();
+    await mergeInstalledMetadata(metadata);
+  })
 });
 
 function parseInstallSpec(spec: string) {

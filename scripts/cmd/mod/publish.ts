@@ -21,76 +21,74 @@ interface PublishResult extends Pick<ModuleManifest, 'name' | 'description' | 'v
   repositoryUrl: string;
 }
 
-export const publish = withModuleTransaction('publish', async (args, context) => {
-  const { positionals, values } = parseArgs({
-    strict: true,
-    allowPositionals: true,
-    options: {
-      repository: {
-        type: 'string'
-      }
-    },
-    args
-  });
-
-  const [name] = positionals;
-  if (!name) {
-    throw new CmdError('Module name is required');
-  }
-
-  if (positionals.length > 1) {
-    throw new CmdError(
-      `Unexpected argument '${positionals[1]}'. This command takes exactly one positional argument`
-    );
-  }
-
-  assertModuleName(name);
-
-  const root = resolve(MODULES, name);
-
-  const manifest = await readModuleManifest(root, {
-    validateDependencyRanges: true
-  });
-
-  if (manifest.name !== name) {
-    throw new CmdError(`${root}: Module directory must match module name ${manifest.name}`);
-  }
-
-  await assertPublishPreflight(manifest);
-
-  const modrc = values.repository ? undefined : await readModrc();
-  const repository = resolveRepository(values.repository, modrc);
-  const archive = await createPublishArchive(root);
-
-  const result = await postPublish(repository, manifest, archive);
-  if (result.name !== manifest.name || result.version !== manifest.version) {
-    throw new CmdError(
-      `Repository returned ${result.name}@${result.version}, expected ${manifest.name}@${manifest.version}`
-    );
-  }
-
-  try {
-    await updateModlock(root, result);
-  } catch (error) {
-    context.logger.error(
-      `Published ${result.name}@${result.version}, but failed to update local modlock`
-    );
-    context.logger.error(
-      `Recovery: manually record ${result.archiveUrl}, or rerun mod publish ${result.name} only if the repository accepts idempotent same-version publishes`
-    );
-
-    throw error;
-  }
-
-  context.logger.info(`Published ${result.name}@${result.version}`);
-  context.logger.info(`Repository: ${result.repositoryUrl}`);
-  context.logger.info(`Archive: ${result.archiveUrl}`);
-});
-
 registerCommand({
   name: 'publish',
   description: 'Publish one root module to the repository',
-  main: publish
+  main: withModuleTransaction('publish', async (args, context) => {
+    const { positionals, values } = parseArgs({
+      strict: true,
+      allowPositionals: true,
+      options: {
+        repository: {
+          type: 'string'
+        }
+      },
+      args
+    });
+
+    const [name] = positionals;
+    if (!name) {
+      throw new CmdError('Module name is required');
+    }
+
+    if (positionals.length > 1) {
+      throw new CmdError(
+        `Unexpected argument '${positionals[1]}'. This command takes exactly one positional argument`
+      );
+    }
+
+    assertModuleName(name);
+
+    const root = resolve(MODULES, name);
+
+    const manifest = await readModuleManifest(root, {
+      validateDependencyRanges: true
+    });
+
+    if (manifest.name !== name) {
+      throw new CmdError(`${root}: Module directory must match module name ${manifest.name}`);
+    }
+
+    await assertPublishPreflight(manifest);
+
+    const modrc = values.repository ? undefined : await readModrc();
+    const repository = resolveRepository(values.repository, modrc);
+    const archive = await createPublishArchive(root);
+
+    const result = await postPublish(repository, manifest, archive);
+    if (result.name !== manifest.name || result.version !== manifest.version) {
+      throw new CmdError(
+        `Repository returned ${result.name}@${result.version}, expected ${manifest.name}@${manifest.version}`
+      );
+    }
+
+    try {
+      await updateModlock(root, result);
+    } catch (error) {
+      context.logger.error(
+        `Published ${result.name}@${result.version}, but failed to update local modlock`
+      );
+      context.logger.error(
+        `Recovery: manually record ${result.archiveUrl}, or rerun mod publish ${result.name} only if the repository accepts idempotent same-version publishes`
+      );
+
+      throw error;
+    }
+
+    context.logger.info(`Published ${result.name}@${result.version}`);
+    context.logger.info(`Repository: ${result.repositoryUrl}`);
+    context.logger.info(`Archive: ${result.archiveUrl}`);
+  })
 });
 
 async function assertPublishPreflight(manifest: ModuleManifest) {

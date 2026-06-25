@@ -21,6 +21,7 @@ interface TestModule {
 
 function runGet(root: string, repository: Map<string, TestModule>, specs: string[]) {
   const archiveUrl = String(pathToFileURL(resolve('scripts/cmd/mod/common/helpers/archive.ts')));
+  const cmdUrl = String(pathToFileURL(resolve('scripts/cmd/cmd.ts')));
   const getUrl = String(pathToFileURL(resolve('scripts/cmd/mod/get.ts')));
 
   execFileSync(
@@ -30,10 +31,11 @@ function runGet(root: string, repository: Map<string, TestModule>, specs: string
       '--eval',
       `
 const repository = new Map(${JSON.stringify(Array.from(repository.entries()))});
-const [{ createGzipTarArchive }, { get }] = await Promise.all([
+const [{ createGzipTarArchive }] = await Promise.all([
   import(${JSON.stringify(archiveUrl)}),
   import(${JSON.stringify(getUrl)})
 ]);
+const { main } = await import(${JSON.stringify(cmdUrl)});
 
 globalThis.fetch = async (input) => {
   const url = new URL(String(input));
@@ -111,10 +113,12 @@ globalThis.fetch = async (input) => {
   });
 };
 
-await get(${JSON.stringify(['--repository', 'http://repo.local', ...specs])}, {
-  fetch: globalThis.fetch,
-  logger: console
-});
+process.argv = [process.execPath, 'mod', 'get', ...${JSON.stringify([
+        '--repository',
+        'http://repo.local',
+        ...specs
+      ])}];
+await main();
 `
     ],
     {
@@ -126,6 +130,7 @@ await get(${JSON.stringify(['--repository', 'http://repo.local', ...specs])}, {
 
 function runGetWithArchive(root: string, archiveScript: string) {
   const archiveUrl = String(pathToFileURL(resolve('scripts/cmd/mod/common/helpers/archive.ts')));
+  const cmdUrl = String(pathToFileURL(resolve('scripts/cmd/cmd.ts')));
   const getUrl = String(pathToFileURL(resolve('scripts/cmd/mod/get.ts')));
 
   return execFileSync(
@@ -134,10 +139,11 @@ function runGetWithArchive(root: string, archiveScript: string) {
       '--input-type=module',
       '--eval',
       `
-const [{ createGzipTarArchive }, { get }] = await Promise.all([
+const [{ createGzipTarArchive }] = await Promise.all([
   import(${JSON.stringify(archiveUrl)}),
   import(${JSON.stringify(getUrl)})
 ]);
+const { main } = await import(${JSON.stringify(cmdUrl)});
 
 globalThis.fetch = async (input) => {
   const url = new URL(String(input));
@@ -156,10 +162,8 @@ globalThis.fetch = async (input) => {
   ${archiveScript}
 };
 
-await get(['--repository', 'http://repo.local', 'app@1.0.0'], {
-  fetch: globalThis.fetch,
-  logger: console
-});
+process.argv = [process.execPath, 'mod', 'get', '--repository', 'http://repo.local', 'app@1.0.0'];
+await main();
 `
     ],
     {

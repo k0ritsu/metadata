@@ -69,18 +69,20 @@ function runPublishWithOptions(
     marker?: string;
   }
 ) {
-  const publishUrl = String(pathToFileURL(resolve('scripts/cmd/mod/publish.ts')));
   const archiveUrl = String(pathToFileURL(resolve('scripts/cmd/mod/common/helpers/archive.ts')));
+  const cmdUrl = String(pathToFileURL(resolve('scripts/cmd/cmd.ts')));
+  const publishUrl = String(pathToFileURL(resolve('scripts/cmd/mod/publish.ts')));
 
   return execFileSync(
     process.execPath,
     [
       '--input-type=module',
       '--eval',
-      `const [{ publish }, { extractGzipTarArchive }] = await Promise.all([
-  import(${JSON.stringify(publishUrl)}),
-  import(${JSON.stringify(archiveUrl)})
+      `const [{ extractGzipTarArchive }] = await Promise.all([
+  import(${JSON.stringify(archiveUrl)}),
+  import(${JSON.stringify(publishUrl)})
 ]);
+const { main } = await import(${JSON.stringify(cmdUrl)});
 
 globalThis.fetch = async (input, init) => {
   ${
@@ -131,10 +133,8 @@ globalThis.fetch = async (input, init) => {
   );
 };
 
-await publish(['--repository', 'https://repo.local', 'app'], {
-  fetch: globalThis.fetch,
-  logger: console
-});
+process.argv = [process.execPath, 'mod', 'publish', '--repository', 'https://repo.local', 'app'];
+await main();
 `
     ],
     {
