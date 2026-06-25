@@ -26,4 +26,4 @@ COPY --from=builder --chown=nodejs:nodejs /app/package.json package.json
 
 USER nodejs
 
-CMD ["node", "--import", "./dist/modules/import.js", "./dist/main.js"]
+CMD ["node", "--import", "./dist/modules/import.js", "dist/main.js"]
