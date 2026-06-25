@@ -49,10 +49,10 @@ npm run dev
 The development command loads `.env` and registers the module loader from `src/modules/import.ts`,
 so module imports can use the same `.js` specifiers that are emitted for production builds.
 
-Check the server:
+Check the HTTP server:
 
 ```bash
-curl http://localhost:3000/ping
+curl --cacert certs/local.crt https://localhost:3000/ping
 ```
 
 ## Build and Run
