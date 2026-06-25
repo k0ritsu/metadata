@@ -71,14 +71,15 @@ export async function bootstrap(config: Config) {
     })
   );
 
-  return async () => {
-    const resolver = Promise.withResolvers<void>();
+  return (signal?: AbortSignal) => {
+    const resolver = Promise.withResolvers<unknown>();
 
-    server.close(() => {
-      resolver.resolve();
-    });
+    server.close(resolver.resolve);
 
-    await Promise.all([resolver.promise, ...hooks.map(({ shutdown } = {}) => shutdown?.())]);
+    return waitForShutdown(
+      Promise.all([resolver.promise, ...hooks.map(({ shutdown } = {}) => shutdown?.())]),
+      signal
+    );
   };
 }
 
@@ -94,4 +95,28 @@ async function loadTlsConfig(config: Config) {
     default:
       throw new Error('TLS_CERT_PATH and TLS_KEY_PATH must be configured together');
   }
+}
+
+async function waitForShutdown(shutdown: Promise<unknown>, signal?: AbortSignal) {
+  if (signal) {
+    if (signal.aborted) {
+      return;
+    }
+
+    const resolver = Promise.withResolvers<unknown>();
+
+    signal.addEventListener('abort', resolver.resolve, {
+      once: true
+    });
+
+    try {
+      await Promise.race([shutdown, resolver.promise]);
+    } finally {
+      signal.removeEventListener('abort', resolver.resolve);
+    }
+
+    return;
+  }
+
+  await shutdown;
 }

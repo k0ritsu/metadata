@@ -2,12 +2,6 @@ import process from 'node:process';
 import { DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT } from '../constants.js';
 import type { Shutdown } from './types.js';
 
-class GracefulShutdownTimeout extends Error {
-  constructor(timeout: number) {
-    super(`Graceful shutdown timed out after ${timeout}ms`);
-  }
-}
-
 interface Config {
   timeout: number;
 }
@@ -18,8 +12,6 @@ export function gracefulShutdown(
     timeout: DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT
   }
 ) {
-  const { timeout } = config;
-
   let isShuttingDown = false;
 
   async function listener() {
@@ -29,16 +21,24 @@ export function gracefulShutdown(
 
     isShuttingDown = true;
 
-    await Promise.race([
-      shutdown?.(),
-      new Promise<void>((_, reject) => {
-        setTimeout(() => {
-          reject(new GracefulShutdownTimeout(timeout));
-        }, timeout);
-      })
-    ]);
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => {
+      abortController.abort();
+    }, config.timeout).unref();
 
-    process.exit(0);
+    try {
+      await shutdown(abortController.signal);
+
+      process.exitCode = Number(abortController.signal.aborted);
+    } catch (error) {
+      process.exitCode = 1;
+
+      console.error('Graceful shutdown failed', error);
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    process.exit();
   }
 
   process.on('SIGINT', listener);

@@ -37,9 +37,7 @@ export async function createServer<V extends HttpVersion>(
         const https = await import('node:https');
 
         const resolver = Promise.withResolvers<void>();
-        const server = https
-          .createServer(config.tls, lookup)
-          .listen(config.port, resolver.resolve.bind(resolver));
+        const server = https.createServer(config.tls, lookup).listen(config.port, resolver.resolve);
 
         await resolver.promise;
 
@@ -48,9 +46,7 @@ export async function createServer<V extends HttpVersion>(
         const http = await import('node:http');
 
         const resolver = Promise.withResolvers<void>();
-        const server = http
-          .createServer(lookup)
-          .listen(config.port, resolver.resolve.bind(resolver));
+        const server = http.createServer(lookup).listen(config.port, resolver.resolve);
 
         await resolver.promise;
 
@@ -71,7 +67,7 @@ export async function createServer<V extends HttpVersion>(
           )
         : http2.createServer(lookup);
 
-      server.listen(config.port, resolver.resolve.bind(resolver));
+      server.listen(config.port, resolver.resolve);
 
       await resolver.promise;
 

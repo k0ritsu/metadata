@@ -1,3 +1,3 @@
 export interface Shutdown {
-  (): Promise<void>;
+  (signal?: AbortSignal): Promise<void>;
 }
