@@ -196,3 +196,56 @@ test('remove moves clean reachable root module to cache', () => {
   assert.equal(existsSync(join(modules, 'lib', 'module.json')), false);
   assert.equal(existsSync(join(modules, '.cache', 'lib@1.0.0', 'module.json')), true);
 });
+
+test('remove replaces corrupt existing cache before deleting clean reachable root module', () => {
+  const root = mkdtempSync(join(tmpdir(), 'metadata-mod-remove-'));
+  const modules = join(root, 'src', 'modules');
+
+  writeFileSync(join(root, 'tsconfig.base.json'), '{}');
+  writeFileSync(join(root, 'tsconfig.json'), '{}');
+  mkdirSync(modules, {
+    recursive: true
+  });
+  writeModule(join(modules, 'app'), 'app', {
+    lib: '1.0.0'
+  });
+  writeFileSync(join(modules, 'app', 'main.ts'), 'export const app = true;\n');
+  writeModule(join(modules, 'lib'), 'lib');
+  writeFileSync(join(modules, 'lib', 'value.ts'), 'export const value = 1;\n');
+  writeModule(join(modules, '.cache', 'lib@1.0.0'), 'lib');
+  writeFileSync(join(modules, '.cache', 'lib@1.0.0', 'value.ts'), 'export const value = 999;\n');
+
+  const appIntegrity = createIntegrity(root, join(modules, 'app'));
+  const libIntegrity = createIntegrity(root, join(modules, 'lib'));
+  writeModlock(root, {
+    lockfileVersion: 1,
+    modules: {
+      '': {
+        dependencies: {
+          app: '1.0.0',
+          lib: '1.0.0'
+        }
+      },
+      'app@1.0.0': {
+        dependencies: {
+          lib: '1.0.0'
+        },
+        integrity: appIntegrity
+      },
+      'lib@1.0.0': {
+        dependencies: {},
+        integrity: libIntegrity
+      }
+    }
+  });
+
+  execFileSync(process.execPath, [resolve('scripts', 'mod.ts'), 'remove', 'lib'], {
+    cwd: root
+  });
+
+  assert.equal(existsSync(join(modules, 'lib', 'module.json')), false);
+  assert.equal(readFileSync(join(modules, '.cache', 'lib@1.0.0', 'value.ts'), 'utf8'), 'export const value = 1;\n');
+  execFileSync(process.execPath, [resolve('scripts', 'mod.ts'), 'verify'], {
+    cwd: root
+  });
+});

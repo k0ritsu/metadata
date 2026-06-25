@@ -7,13 +7,14 @@ import { createModuleIntegrity } from './common/helpers/integrity.ts';
 import { createModuleKey } from './common/helpers/key.ts';
 import { assertModuleName } from './common/helpers/manifest.ts';
 import { readModlock } from './common/helpers/modlock.ts';
-import { exists } from './common/helpers/path.ts';
+import { createTemporarySibling, exists, replacePathAtomically } from './common/helpers/path.ts';
 import { withModuleTransaction } from './common/helpers/transaction.ts';
 import type { Modlock } from './common/types.ts';
 import { tidyWorkspace } from './tidy.ts';
 
 interface RemovePlan {
   cache: string;
+  integrity?: string;
   key: string;
   preserveInCache: boolean;
   root: string;
@@ -67,8 +68,10 @@ async function createRemovePlans(
     }
 
     const key = createModuleKey(name, version);
+    const node = modlock.modules[key];
     const plan = {
       cache: resolve(CACHE, key),
+      integrity: node?.integrity,
       key,
       preserveInCache: isReachableAfterRemoval(key, names, modlock),
       root: resolve(MODULES, name)
@@ -96,17 +99,55 @@ async function executeRemovePlans(plans: RemovePlan[]) {
       continue;
     }
 
-    const found = await exists(plan.cache);
-    if (plan.preserveInCache && !found) {
-      await cp(plan.root, plan.cache, {
-        recursive: true
-      });
+    if (plan.preserveInCache) {
+      await preserveCacheArtifact(plan);
     }
 
     await rm(plan.root, {
       force: true,
       recursive: true
     });
+  }
+}
+
+async function preserveCacheArtifact(plan: RemovePlan) {
+  if (!plan.integrity) {
+    throw new CmdError(`${plan.key}: Root module is still used and has no locked integrity`);
+  }
+
+  if (await exists(plan.cache)) {
+    const actual = await createModuleIntegrity(plan.cache);
+    if (actual === plan.integrity) {
+      return;
+    }
+  }
+
+  const stage = await createTemporarySibling(plan.cache);
+  try {
+    await cp(plan.root, stage, {
+      recursive: true
+    });
+
+    const stagedIntegrity = await createModuleIntegrity(stage);
+    if (stagedIntegrity !== plan.integrity) {
+      throw new CmdError(`${plan.key}: Copied cache artifact failed integrity verification`);
+    }
+
+    await replacePathAtomically(plan.cache, stage);
+
+    const actual = await createModuleIntegrity(plan.cache);
+    if (actual !== plan.integrity) {
+      throw new CmdError(
+        `${plan.key}: Cache artifact failed integrity verification after replacement`
+      );
+    }
+  } catch (error) {
+    await rm(stage, {
+      force: true,
+      recursive: true
+    });
+
+    throw error;
   }
 }
 
