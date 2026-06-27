@@ -42,7 +42,7 @@ export async function createCluster(createWorker: CreateWorker, config: Config) 
       }
 
       const workers = Object.values(cluster.workers).filter(
-        (worker): worker is NonNullable<typeof worker> => worker !== undefined
+        (worker): worker is NonNullable<typeof worker> => typeof worker !== 'undefined'
       );
 
       for (const worker of workers) {
@@ -56,8 +56,8 @@ export async function createCluster(createWorker: CreateWorker, config: Config) 
       }
 
       const shutdown = Promise.all(workers.map(waitForWorkerExit));
-      const stoppedGracefully = await waitForWorkersToStop(shutdown, signal);
 
+      const stoppedGracefully = await waitForWorkersToStop(shutdown, signal);
       if (!stoppedGracefully) {
         for (const worker of workers) {
           if (!worker.isDead()) {
