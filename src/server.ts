@@ -32,7 +32,7 @@ export async function createServer<V extends HttpVersion>(
 ) {
   switch (true) {
     case matchHttpVersion('http1.1', lookup, config): {
-      const serverFactory = await httpServerFactory(config);
+      const serverFactory = await http1ServerFactory(config);
 
       const resolver = Promise.withResolvers<void>();
       const server = serverFactory(lookup).listen(config.port, resolver.resolve);
@@ -73,7 +73,7 @@ function matchHttpVersion<V extends HttpVersion>(
   return version === config.version && typeof lookup === 'function';
 }
 
-async function httpServerFactory<V>(config: Config<V>) {
+async function http1ServerFactory<V>(config: Config<V>) {
   if (config.tls) {
     const https = await import('node:https');
 
