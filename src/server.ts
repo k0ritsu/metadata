@@ -5,9 +5,9 @@ import type { Router } from './router/types.js';
 export type HttpVersion = 'http1.1' | 'http2';
 
 export interface HttpRequest extends Readable {
-  httpVersion?: string | undefined;
-  method?: string | undefined;
-  url?: string | undefined;
+  httpVersion?: string;
+  method?: string;
+  url?: string;
   headers: IncomingHttpHeaders;
 }
 
@@ -19,12 +19,10 @@ export interface HttpResponse extends Writable {
 interface Config<V> {
   port: number;
   version: V;
-  tls?:
-    | {
-        cert: string;
-        key: string;
-      }
-    | undefined;
+  tls?: {
+    cert: string;
+    key: string;
+  };
 }
 
 export async function createServer<V extends HttpVersion>(

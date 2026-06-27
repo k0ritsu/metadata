@@ -59,7 +59,7 @@ export const load: LoadHook = (url, context, nextLoad) => {
   return nextLoad(url, context);
 };
 
-function resolveCoreSpecifier(specifier: string, fallback: () => string): string {
+function resolveCoreSpecifier(specifier: string, fallback: () => string) {
   if (!specifier.startsWith(CORE_ALIAS)) {
     return fallback();
   }
@@ -72,7 +72,7 @@ function resolveCoreSpecifier(specifier: string, fallback: () => string): string
   return join(SOURCE, path);
 }
 
-function resolveModuleSpecifier(specifier: string, context: ResolveHookContext): string {
+function resolveModuleSpecifier(specifier: string, context: ResolveHookContext) {
   const alias = parseModuleAlias(specifier);
   if (!alias) {
     return specifier;
@@ -91,7 +91,7 @@ function resolveModuleSpecifier(specifier: string, context: ResolveHookContext):
   return join(dependencyRoot, alias.path);
 }
 
-function parseModuleAlias(specifier: string): ModuleAlias | undefined {
+function parseModuleAlias(specifier: string) {
   if (specifier.startsWith(MODULES_ALIAS)) {
     specifier = specifier.slice(MODULES_ALIAS.length);
   } else {
@@ -106,10 +106,10 @@ function parseModuleAlias(specifier: string): ModuleAlias | undefined {
   return {
     dependency,
     path: join(...pathParts)
-  };
+  } satisfies ModuleAlias;
 }
 
-function getImporterKey(context: ResolveHookContext, specifier: string): string {
+function getImporterKey(context: ResolveHookContext, specifier: string) {
   const parentPath = getParentPath(context);
   if (!parentPath) {
     throw new Error(`cannot resolve "${specifier}" without a file parent URL`);
@@ -135,11 +135,11 @@ function getImporterKey(context: ResolveHookContext, specifier: string): string 
   return createModuleKey(root, getDependencyVersion(ROOT_NODE, root));
 }
 
-function createModuleKey(dependency: string, version: string): string {
+function createModuleKey(dependency: string, version: string) {
   return `${dependency}@${version}`;
 }
 
-function getDependencyVersion(module: string, dependency: string): string {
+function getDependencyVersion(module: string, dependency: string) {
   const node = assertModlockNode(module);
 
   const version = node.dependencies[dependency];
@@ -150,7 +150,7 @@ function getDependencyVersion(module: string, dependency: string): string {
   return version;
 }
 
-function assertModlockNode(module: string): ModlockNode {
+function assertModlockNode(module: string) {
   const node = modules[module];
   if (!node) {
     throw new Error(`${module || 'root module set'} is missing`);
@@ -165,17 +165,17 @@ function resolveDependencyRoot(
   options: {
     module: string;
   }
-): string {
+) {
   return isRootDependency(dependency, version)
     ? join(MODULES, dependency)
     : join(CACHE, options.module);
 }
 
-function isRootDependency(dependency: string, version: string): boolean {
+function isRootDependency(dependency: string, version: string) {
   return modules[ROOT_NODE]?.dependencies[dependency] === version;
 }
 
-function isInsidePath(context: ResolveHookContext, root: string): boolean {
+function isInsidePath(context: ResolveHookContext, root: string) {
   const parentPath = getParentPath(context);
   if (!parentPath) {
     return false;
@@ -186,7 +186,7 @@ function isInsidePath(context: ResolveHookContext, root: string): boolean {
   return relativePath !== '' && !relativePath.startsWith('..') && !isAbsolute(relativePath);
 }
 
-function getParentPath(context: ResolveHookContext): string | undefined {
+function getParentPath(context: ResolveHookContext) {
   const { parentURL } = context;
   if (parentURL?.startsWith('file:')) {
     return fileURLToPath(parentURL);
@@ -195,7 +195,7 @@ function getParentPath(context: ResolveHookContext): string | undefined {
   return;
 }
 
-function withRuntimeExtension(specifier: string): string {
+function withRuntimeExtension(specifier: string) {
   if (specifier.endsWith(JAVASCRIPT_EXTENSION)) {
     specifier = specifier.slice(0, -JAVASCRIPT_EXTENSION.length);
 

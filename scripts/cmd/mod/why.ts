@@ -79,7 +79,7 @@ function parseWhySpec(spec: string, modlock: Modlock) {
   return match;
 }
 
-function findPath(target: string, modlock: Modlock): string[] | undefined {
+function findPath(target: string, modlock: Modlock) {
   const root = modlock.modules[ROOT_NODE];
   if (!root) {
     throw new CmdError('Root module set is missing from lockfile');

@@ -3,6 +3,9 @@ export interface ModuleManifest {
   description: string;
   version: string;
   main?: string;
+  scripts?: {
+    build?: string;
+  };
   dependencies?: Record<string, string>;
   [key: string]: unknown;
 }

@@ -18,7 +18,7 @@ import { tidyWorkspace } from './tidy.ts';
 
 interface InstallSpec {
   name: string;
-  version: string | undefined;
+  version?: string;
 }
 
 interface VersionMetadata {

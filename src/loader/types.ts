@@ -7,7 +7,7 @@ export interface Context {
   logger: Logger;
   modules: Array<
     Omit<ModuleManifest, 'main'> & {
-      main?: ModuleMain | undefined;
+      main?: ModuleMain;
       root: string;
     }
   >;
