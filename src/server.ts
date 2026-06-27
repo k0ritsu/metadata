@@ -1,4 +1,5 @@
-import type { IncomingHttpHeaders, OutgoingHttpHeaders } from 'node:http';
+import type { IncomingHttpHeaders, OutgoingHttpHeaders, RequestListener } from 'node:http';
+import type { Http2ServerRequest, Http2ServerResponse } from 'node:http2';
 import type { Readable, Writable } from 'node:stream';
 import type { Router } from './router/types.js';
 
@@ -31,49 +32,27 @@ export async function createServer<V extends HttpVersion>(
 ) {
   switch (true) {
     case matchHttpVersion('http1.1', lookup, config): {
-      if (config.tls) {
-        const https = await import('node:https');
-
-        const resolver = Promise.withResolvers<void>();
-        const server = https.createServer(config.tls, lookup).listen(config.port, resolver.resolve);
-
-        await resolver.promise;
-
-        return server;
-      } else {
-        const http = await import('node:http');
-
-        const resolver = Promise.withResolvers<void>();
-        const server = http.createServer(lookup).listen(config.port, resolver.resolve);
-
-        await resolver.promise;
-
-        return server;
-      }
-    }
-    case matchHttpVersion('http2', lookup, config): {
-      const http2 = await import('node:http2');
+      const serverFactory = await httpServerFactory(config);
 
       const resolver = Promise.withResolvers<void>();
-      const server = config.tls
-        ? http2.createSecureServer(
-            {
-              allowHTTP1: true,
-              ...config.tls
-            },
-            lookup
-          )
-        : http2.createServer(lookup);
-
-      server.listen(config.port, resolver.resolve);
+      const server = serverFactory(lookup).listen(config.port, resolver.resolve);
 
       await resolver.promise;
 
       return server;
     }
-    default: {
-      throw new Error('Unknown http version');
+    case matchHttpVersion('http2', lookup, config): {
+      const serverFactory = await http2ServerFactory(config);
+
+      const resolver = Promise.withResolvers<void>();
+      const server = serverFactory(lookup).listen(config.port, resolver.resolve);
+
+      await resolver.promise;
+
+      return server;
     }
+    default:
+      throw new Error('Unknown http version');
   }
 }
 
@@ -92,4 +71,42 @@ function matchHttpVersion<V extends HttpVersion>(
   config: Config<HttpVersion>
 ): lookup is Router<V>['lookup'] {
   return version === config.version && typeof lookup === 'function';
+}
+
+async function httpServerFactory<V>(config: Config<V>) {
+  if (config.tls) {
+    const https = await import('node:https');
+
+    const options = config.tls;
+
+    return (requestListener: RequestListener) => {
+      return https.createServer(options, requestListener);
+    };
+  }
+
+  const http = await import('node:http');
+
+  return (requestListener: RequestListener) => {
+    return http.createServer(requestListener);
+  };
+}
+
+async function http2ServerFactory<V>(config: Config<V>) {
+  type RequestListener = (request: Http2ServerRequest, response: Http2ServerResponse) => void;
+
+  const http2 = await import('node:http2');
+
+  return (requestListener: RequestListener) => {
+    if (config.tls) {
+      return http2.createSecureServer(
+        {
+          allowHTTP1: true,
+          ...config.tls
+        },
+        requestListener
+      );
+    }
+
+    return http2.createServer(requestListener);
+  };
 }
