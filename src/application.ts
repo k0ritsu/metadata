@@ -14,9 +14,33 @@ export async function bootstrap(config: Config) {
     })
   );
 
+  const router = createRouter(config, logger);
   const store = createStore();
 
-  const router = createRouter(config, logger);
+  const modules = await loadModules();
+  const hooks = await Promise.all(
+    modules.map((module) => {
+      logger.info(`Registering module ${module.name}@${module.version}`);
+
+      if (!module.main) {
+        return;
+      }
+
+      let hook: ReturnType<NonNullable<typeof module.main>['register']> | undefined;
+
+      router.group('', (router) => {
+        hook = module.main?.register({
+          router,
+          logger,
+          modules,
+          store
+        });
+      });
+
+      return hook;
+    })
+  );
+
   const server = await createServer(
     (req, res, ctx, done) => {
       let requestId = req.headers['x-request-id'];
@@ -46,30 +70,6 @@ export async function bootstrap(config: Config) {
   );
 
   logger.info(`Starting ${config.APP_NAME}@${config.APP_VERSION} on port ${config.HTTP_PORT}`);
-
-  const modules = await loadModules();
-  const hooks = await Promise.all(
-    modules.map((module) => {
-      logger.info(`Registering module ${module.name}@${module.version}`);
-
-      if (!module.main) {
-        return;
-      }
-
-      let hook: ReturnType<NonNullable<typeof module.main>['register']> | undefined;
-
-      router.group('', (router) => {
-        hook = module.main?.register({
-          router,
-          logger,
-          modules,
-          store
-        });
-      });
-
-      return hook;
-    })
-  );
 
   return (signal?: AbortSignal) => {
     const resolver = Promise.withResolvers<unknown>();
