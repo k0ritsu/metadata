@@ -26,14 +26,6 @@ export async function createCluster(createWorker: CreateWorker, config: Config) 
       cluster.fork(process.env);
     }
 
-    let shutdown: Promise<void> | undefined;
-
-    return (signal?: AbortSignal) => {
-      shutdown ??= shutdownCluster(signal);
-
-      return shutdown;
-    };
-
     async function shutdownCluster(signal?: AbortSignal) {
       isShuttingDown = true;
 
@@ -68,6 +60,14 @@ export async function createCluster(createWorker: CreateWorker, config: Config) 
 
       await shutdown;
     }
+
+    let shutdown: Promise<void> | undefined;
+
+    return (signal?: AbortSignal) => {
+      shutdown ??= shutdownCluster(signal);
+
+      return shutdown;
+    };
   } else {
     const { shutdown } = await createWorker();
 
