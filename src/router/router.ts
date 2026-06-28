@@ -28,7 +28,7 @@ export interface HttpHandler {
   (...args: HttpHandlerArgs): Promise<Response>;
 }
 
-type HttpMiddlewareArgs = [...HttpHandlerArgs, next: () => ReturnType<HttpHandler>];
+type HttpMiddlewareArgs = [...Parameters<HttpHandler>, next: () => ReturnType<HttpHandler>];
 export interface HttpMiddleware {
   (...args: HttpMiddlewareArgs): Promise<Response>;
 }
